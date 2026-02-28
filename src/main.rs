@@ -59,20 +59,21 @@ fn compile(cfg: Config) {
         .output()
         .expect("preprocessing failed");
 
-    // compiler 
+    // compiler
     // (using gcc for now for testing)
     Command::new("gcc")
         .args(["-S", &preprocessor_output, "-o", &assembly_output])
         .output()
         .expect("compilation failed");
 
+    remove_file(preprocessor_output).expect("failed to remove preprocessed file");
+    
     // assembler and linker
     Command::new("gcc")
         .args([&assembly_output, "-o", &output])
         .output()
         .expect("assembling/linking failed");
 
-    remove_file(preprocessor_output).expect("failed to remove preprocessed file");
     remove_file(assembly_output).expect("failed to remove assembly file");
 }
 
