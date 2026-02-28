@@ -1,44 +1,44 @@
 use std::env;
 
 struct Config {
-    infile: String,
-    outfile: String,
+    infiles: Vec<String>,
+    outfile: Option<String>,
 }
 
 impl Config {
-    fn build(args: &[String]) -> Result<Config, &'static str>{
-        if args.len() < 4 {
-            return Err("not enough arguments");
+    fn new() -> Config {
+        Config {
+            infiles: Vec::new(),
+            outfile: None,
         }
-        if args.len() > 4 {
-            return Err("too many arguments")
-        }
+    }
 
-        let mut output_next = false;
-        let mut output = String::new();
-        let mut input = String::new();
+    fn parse() -> Result<Config, &'static str> {
+        let mut cfg = Config::new();
+        let mut args = env::args().collect::<Vec<String>>().into_iter().skip(1);
 
-        for arg in &args[1..] {
-            if output_next {
-                output = arg.clone();
-                output_next = false;
-                continue;
+        while let Some(arg) = args.next() {
+            if arg.starts_with('-') {
+                match arg.as_str() {
+                    "-o" | "--output" => {
+                        if let Some(file) = args.next() {
+                            cfg.outfile = Some(file)
+                        } else {
+                            return Err("expected file following output flag");
+                        }
+                    }
+                    _ => return Err("illegal option"),
+                }
+            } else {
+                cfg.infiles.push(arg)
             }
-
-            if arg == "-o" {
-                output_next = true;
-                continue;
-            }
-            input = arg.clone();
         }
-        Ok(Config { infile: input, outfile: output })
+        Ok(cfg)
     }
 }
 
 fn main() {
-
-    let args: Vec<String> = env::args().collect();
-    let cfg = Config::build(&args).unwrap();
-    println!("Input: {}", cfg.infile);
-    println!("Output: {}", cfg.outfile);
+    let cfg = Config::parse().unwrap();
+    dbg!(cfg.infiles);
+    println!("Output: {}", cfg.outfile.unwrap());
 }
