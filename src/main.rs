@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::remove_file;
 use std::process::Command;
+pub mod lexer;
 
 struct Config {
     infiles: Vec<String>,
