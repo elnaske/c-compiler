@@ -18,11 +18,19 @@ enum Keyword {
 }
 
 impl Keyword {
-    fn from_str(s: &str) -> Option<Self> {
+    // fn from_str(s: &str) -> Option<Self> {
+    //     match s {
+    //         "int" => Some(Keyword::Int),
+    //         "void" => Some(Keyword::Void),
+    //         "return" => Some(Keyword::Return),
+    //         _ => None,
+    //     }
+    // }
+    fn from_u8(s: &[u8]) -> Option<Self> {
         match s {
-            "int" => Some(Keyword::Int),
-            "void" => Some(Keyword::Void),
-            "return" => Some(Keyword::Return),
+            b"int" => Some(Keyword::Int),
+            b"void" => Some(Keyword::Void),
+            b"return" => Some(Keyword::Return),
             _ => None,
         }
     }
@@ -51,7 +59,7 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         match self.peek() {
-            Some(b'a'..=b'z' | b'A'..b'Z' | b'_') => Some(self.lex_identifier()),
+            Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => Some(self.lex_identifier()),
             Some(b'0'..=b'9') => Some(self.lex_constant()),
             Some(b'(') => {
                 self.advance();
@@ -98,13 +106,41 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_identifier(&self) -> Token {
-        // get a keyword or identifier token
-        unimplemented!()
+    fn lex_identifier(&mut self) -> Token {
+        let start = self.pos;
+
+        loop {
+            match self.peek() {
+                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'0'..=b'9') => self.advance(),
+                _ => break,
+            }
+        }
+        if let Some(keyword) = Keyword::from_u8(&self.input[start..self.pos]) {
+            Token::Keyword(keyword)
+        } else {
+            Token::Identifier(
+                str::from_utf8(&self.input[start..self.pos])
+                    .expect("Invalid UTF-8 sequence")
+                    .to_string(),
+            )
+        }
     }
 
-    fn lex_constant(&self) -> Token {
-        unimplemented!()
+    fn lex_constant(&mut self) -> Token {
+        let start = self.pos;
+
+        loop {
+            match self.peek() {
+                Some(b'0'..=b'9') => self.advance(),
+                _ => break,
+            }
+        }
+        Token::Constant(
+            str::from_utf8(&self.input[start..self.pos])
+                .expect("Invalid UTF-8 sequence")
+                .parse()
+                .expect("Not a valid number"),
+        )
     }
 }
 
