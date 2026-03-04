@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq)]
-enum Token {
+pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
@@ -11,21 +11,13 @@ enum Token {
 }
 
 #[derive(Debug, PartialEq)]
-enum Keyword {
+pub enum Keyword {
     Int,
     Void,
     Return,
 }
 
 impl Keyword {
-    // fn from_str(s: &str) -> Option<Self> {
-    //     match s {
-    //         "int" => Some(Keyword::Int),
-    //         "void" => Some(Keyword::Void),
-    //         "return" => Some(Keyword::Return),
-    //         _ => None,
-    //     }
-    // }
     fn from_u8(s: &[u8]) -> Option<Self> {
         match s {
             b"int" => Some(Keyword::Int),
@@ -36,22 +28,30 @@ impl Keyword {
     }
 }
 
-struct Lexer<'a> {
+// TODO:
+// - what happens to Lexer when done? reset automatically or manually?
+// - better error handling
+pub struct Lexer<'a> {
     input: &'a [u8],
     pos: usize,
 }
 
 impl<'a> Lexer<'a> {
-    fn new(input: &'a [u8]) -> Self {
+    pub fn new(input: &'a [u8]) -> Self {
         Lexer { input, pos: 0 }
     }
 
-    fn get_tokens(&mut self) -> Vec<Token> {
+    pub fn reset(&mut self) {
+        self.pos = 0;
+    }
+
+    pub fn get_tokens(&mut self) -> Vec<Token> {
         // parse tokens (self.next_token) until EOF
         let mut tokens = Vec::<Token>::new();
         while let Some(token) = self.next_token() {
             tokens.push(token);
         }
+        self.reset();
         tokens
     }
 
@@ -154,7 +154,8 @@ mod test {
         return 2;
         }";
 
-        let tokens = Lexer::new(code).get_tokens();
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
 
         let ref_tokens = vec![
             Token::Keyword(Keyword::Int),
@@ -170,5 +171,6 @@ mod test {
         ];
 
         assert_eq!(ref_tokens, tokens);
+        assert_eq!(lexer.pos, 0);
     }
 }
