@@ -1,6 +1,7 @@
-use std::fmt::{self, Formatter};
 use crate::lexer::{Keyword, Token};
+use std::fmt::{self, Formatter};
 
+#[derive(Debug, PartialEq)]
 pub struct Program {
     function: Function,
 }
@@ -12,10 +13,12 @@ impl fmt::Display for Program {
             "Program(
                 {}
             )",
-            self.function)
+            self.function
+        )
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct Function {
     identifier: String,
     body: Statement,
@@ -29,12 +32,12 @@ impl fmt::Display for Function {
                 name='{}',
                 body={}
             )",
-            self.identifier,
-            self.body,
+            self.identifier, self.body,
         )
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum Statement {
     Return(Expression),
 }
@@ -42,11 +45,12 @@ enum Statement {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Return(exp) => write!(f, "Return(\n\t{}\n)", exp)
+            Statement::Return(exp) => write!(f, "Return(\n\t{}\n)", exp),
         }
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum Expression {
     Constant(i32),
 }
@@ -54,7 +58,7 @@ enum Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Constant(i) => write!(f, "Constant({})", i)
+            Expression::Constant(i) => write!(f, "Constant({})", i),
         }
     }
 }
@@ -65,65 +69,113 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse_program(&mut self) -> Option<Program>{
-        while let Some(token) = self.take_token() {
-            
+    pub fn new(tokens: Vec<Token>) -> Self {
+        Parser {
+            tokens: tokens,
+            pos: 0,
         }
-        unimplemented!() 
     }
-    
+
+    pub fn parse_program(&mut self) -> Result<Program, String> {
+        Ok(Program {
+            function: self.parse_function()?,
+        })
+    }
+
+    // transfer ownership instead of returning reference?
     fn take_token(&mut self) -> Option<&Token> {
-        if self.pos < self.tokens.len() {
-            let token = &self.tokens[self.pos];
-            self.pos += 1;
-            Some(token)
-        } else {
-            None
-        }
+        let token = self.tokens.get(self.pos);
+        self.pos += 1;
+        token
     }
-    
+
     fn expect(&mut self, expected: Token) -> Result<(), String> {
-        if let Some(actual) = self.take_token() {
-            if *actual != expected {
-                Err(format!("Syntax error: expected '{:?}', found '{:?}'", expected, *actual))
-            } else {
-                Ok(())
-            }
+        // if let Some(actual) = self.take_token() {
+        //     if *actual != expected {
+        //         Err(format!("Syntax error: expected '{:?}', found '{:?}'", expected, *actual))
+        //     } else {
+        //         Ok(())
+        //     }
+        // } else {
+        //      Err("End of tokens".to_string())
+        // }
+        let actual = self.take_token();
+        if actual == Some(&expected) {
+            Ok(())
         } else {
-            Err("End of tokens".to_string())
+            Err(format!(
+                "Syntax error: expected '{:?}', found '{:?}'",
+                expected, actual
+            ))
         }
     }
 
-    fn parse_function(&mut self) -> Option<Function> {
-        self.expect(Token::Keyword(Keyword::Int)).ok()?;
-        let identifier = self.parse_identifier().expect("Invalid identifier");
-        self.expect(Token::OpenParenthesis).ok()?;
-        self.expect(Token::Keyword(Keyword::Void)).ok()?;
-        self.expect(Token::CloseParenthesis).ok()?;
-        self.expect(Token::OpenBrace).ok()?;
-        let body = self.parse_statement().expect("Invalid statement");
-        self.expect(Token::CloseBrace).ok()?;
-        Some(Function { identifier, body })
+    fn parse_function(&mut self) -> Result<Function, String> {
+        self.expect(Token::Keyword(Keyword::Int))?;
+
+        let identifier = self.parse_identifier()?;
+
+        self.expect(Token::OpenParenthesis)?;
+        self.expect(Token::Keyword(Keyword::Void))?;
+        self.expect(Token::CloseParenthesis)?;
+        self.expect(Token::OpenBrace)?;
+
+        let body = self.parse_statement()?;
+
+        self.expect(Token::CloseBrace)?;
+
+        Ok(Function { identifier, body })
     }
 
-    fn parse_statement(&mut self) -> Option<Statement> {
-        self.expect(Token::Keyword(Keyword::Return)).ok()?;
-        let return_value = self.parse_expression().expect("Invalid expression");
-        self.expect(Token::Semicolon).ok()?;
-        Some(Statement::Return(return_value))
+    fn parse_statement(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Keyword(Keyword::Return))?;
+
+        let expression = self.parse_expression()?;
+
+        self.expect(Token::Semicolon)?;
+
+        Ok(Statement::Return(expression))
     }
 
-    fn parse_identifier(&mut self) -> Option<String> {
+    fn parse_identifier(&mut self) -> Result<String, String> {
         match self.take_token() {
-            Some(Token::Identifier(s)) => Some(s.clone()),
-            _ => None,
+            Some(Token::Identifier(s)) => Ok(s.clone()),
+            other => Err(format!("Expected identifier, found {:?}", other)),
         }
     }
 
-    fn parse_expression(&mut self) -> Option<Expression> {
+    fn parse_expression(&mut self) -> Result<Expression, String> {
         match self.take_token() {
-            Some(Token::Constant(i)) => Some(Expression::Constant(*i)),
-            _ => None,
+            Some(Token::Constant(i)) => Ok(Expression::Constant(*i)),
+            other => Err(format!("Expected expression, found {:?}", other)),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::lexer::Lexer;
+
+    #[test]
+    fn return_2() {
+        let code = b"int main(void) {
+        return 2;
+        }";
+
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().unwrap();
+
+        let ref_program = Program {
+            function: Function {
+                identifier: "main".to_string(),
+                body: Statement::Return(Expression::Constant(2)),
+            },
+        };
+
+        assert_eq!(program, ref_program)
     }
 }

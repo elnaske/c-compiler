@@ -87,10 +87,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek(&self) -> Option<u8> {
-        if self.pos >= self.input.len() {
-            return None;
-        }
-        Some(self.input[self.pos])
+        self.input.get(self.pos).cloned()
     }
 
     fn advance(&mut self) {
