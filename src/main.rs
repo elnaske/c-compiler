@@ -1,8 +1,10 @@
 use std::env;
 use std::fs::remove_file;
 use std::process::Command;
-pub mod lexer;
-pub mod parser;
+
+mod lexer;
+mod parser;
+mod codegen;
 
 struct Config {
     infiles: Vec<String>,

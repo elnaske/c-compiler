@@ -3,55 +3,44 @@ use std::fmt::{self, Formatter};
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    function: Function,
+    pub function: Function,
 }
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Program(
-                {}
-            )",
-            self.function
-        )
+        write!(f, "Program({})", self.function)
     }
 }
 
 #[derive(Debug, PartialEq)]
-struct Function {
-    identifier: String,
-    body: Statement,
+pub struct Function {
+    pub name: String,
+    pub body: Statement,
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Function(
-                name='{}',
-                body={}
-            )",
-            self.identifier, self.body,
-        )
+        write!(f, "Function(name='{}', body={})", self.name, self.body,)
     }
 }
 
 #[derive(Debug, PartialEq)]
-enum Statement {
+pub enum Statement {
     Return(Expression),
 }
 
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Return(exp) => write!(f, "Return(\n\t{}\n)", exp),
+            Statement::Return(exp) => {
+                write!(f, "Return({})", exp)
+            }
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-enum Expression {
+pub enum Expression {
     Constant(i32),
 }
 
@@ -90,15 +79,6 @@ impl Parser {
     }
 
     fn expect(&mut self, expected: Token) -> Result<(), String> {
-        // if let Some(actual) = self.take_token() {
-        //     if *actual != expected {
-        //         Err(format!("Syntax error: expected '{:?}', found '{:?}'", expected, *actual))
-        //     } else {
-        //         Ok(())
-        //     }
-        // } else {
-        //      Err("End of tokens".to_string())
-        // }
         let actual = self.take_token();
         if actual == Some(&expected) {
             Ok(())
@@ -113,7 +93,7 @@ impl Parser {
     fn parse_function(&mut self) -> Result<Function, String> {
         self.expect(Token::Keyword(Keyword::Int))?;
 
-        let identifier = self.parse_identifier()?;
+        let name = self.parse_identifier()?;
 
         self.expect(Token::OpenParenthesis)?;
         self.expect(Token::Keyword(Keyword::Void))?;
@@ -124,7 +104,7 @@ impl Parser {
 
         self.expect(Token::CloseBrace)?;
 
-        Ok(Function { identifier, body })
+        Ok(Function { name, body })
     }
 
     fn parse_statement(&mut self) -> Result<Statement, String> {
@@ -171,7 +151,7 @@ mod test {
 
         let ref_program = Program {
             function: Function {
-                identifier: "main".to_string(),
+                name: "main".to_string(),
                 body: Statement::Return(Expression::Constant(2)),
             },
         };
