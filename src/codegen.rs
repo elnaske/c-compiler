@@ -18,20 +18,42 @@ enum Instruction {
     Mov { src: Operand, dst: Operand },
     Ret,
 }
+impl Instruction {
+    fn to_string(&self) -> String {
+        match self {
+            Instruction::Mov{src, dst} => format!("movl\t{}, {}", src.to_string(), dst.to_string()),
+            Instruction::Ret => "ret".to_string(),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum Operand {
     Imm(i32),
     Register(Register),
 }
+impl Operand {
+    fn to_string(&self) -> String {
+        match self {
+            Operand::Imm(i) => format!("${}", i),
+            Operand::Register(reg) => format!("%{}", reg.to_string()),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum Register {
     EAX,
 }
+impl Register {
+    fn to_string(&self) -> String {
+        match self {
+            Register::EAX => "EAX".to_string(),
+        }
+    }
+}
 
 struct AssemblyGenerator {}
-
 impl AssemblyGenerator {
     pub fn new() -> Self {
         AssemblyGenerator {}
@@ -70,6 +92,10 @@ impl AssemblyGenerator {
             }],
         }
     }
+
+    fn emit(&mut self, program: Program) {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]
@@ -85,25 +111,24 @@ mod test {
         }";
 
         let tokens = Lexer::new(code).get_tokens();
-        
+
         let program = Parser::new(tokens).parse_program().unwrap();
 
         let translated = AssemblyGenerator::new().translate(program);
 
-        let ref_translation = Program{
+        let ref_translation = Program {
             function: Function {
                 name: "main".to_string(),
                 instructions: vec![
                     Instruction::Mov {
                         src: Operand::Imm(2),
-                        dst: Operand::Register(Register::EAX)
+                        dst: Operand::Register(Register::EAX),
                     },
                     Instruction::Ret,
-                ]
-            }
+                ],
+            },
         };
 
         assert_eq!(translated, ref_translation)
-
     }
 }
