@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::vec;
 
 use crate::parser;
@@ -21,8 +22,10 @@ enum Instruction {
 impl Instruction {
     fn to_string(&self) -> String {
         match self {
-            Instruction::Mov{src, dst} => format!("movl\t{}, {}", src.to_string(), dst.to_string()),
-            Instruction::Ret => "ret".to_string(),
+            Instruction::Mov { src, dst } => {
+                format!("\tmovl\t{}, {}", src.to_string(), dst.to_string())
+            }
+            Instruction::Ret => "\tret".to_string(),
         }
     }
 }
@@ -59,20 +62,20 @@ impl AssemblyGenerator {
         AssemblyGenerator {}
     }
 
-    pub fn translate(&mut self, c_program: parser::Program) -> Program {
+    pub fn translate(&self, c_program: parser::Program) -> Program {
         Program {
             function: self.translate_function(c_program.function),
         }
     }
 
-    fn translate_function(&mut self, c_function: parser::Function) -> Function {
+    fn translate_function(&self, c_function: parser::Function) -> Function {
         Function {
             name: c_function.name,
             instructions: self.translate_statement(c_function.body),
         }
     }
 
-    fn translate_statement(&mut self, statement: parser::Statement) -> Vec<Instruction> {
+    fn translate_statement(&self, statement: parser::Statement) -> Vec<Instruction> {
         let mut instructions: Vec<Instruction> = Vec::new();
 
         match statement {
@@ -84,7 +87,7 @@ impl AssemblyGenerator {
         instructions
     }
 
-    fn translate_expression(&mut self, expression: parser::Expression) -> Vec<Instruction> {
+    fn translate_expression(&self, expression: parser::Expression) -> Vec<Instruction> {
         match expression {
             parser::Expression::Constant(i) => vec![Instruction::Mov {
                 src: Operand::Imm(i),
@@ -93,16 +96,34 @@ impl AssemblyGenerator {
         }
     }
 
-    fn emit(&mut self, program: Program) {
-        unimplemented!()
+    fn generate_asm(&self, program: Program) -> String {
+        let mut lines: Vec<String> = Vec::new();
+
+        lines.push(format!("\t.globl {}", program.function.name));
+        lines.push(format!("{}:", program.function.name));
+        lines.append(
+            &mut program
+                .function
+                .instructions
+                .into_iter()
+                .map(|instr| instr.to_string())
+                .collect::<Vec<String>>(),
+        );
+        lines.push("\t.section .note.GNU-stack\n".to_string());
+
+        lines.join("\n")
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::io::Write;
+
     use super::*;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use std::process::Command;
+    use tempfile::tempdir;
 
     #[test]
     fn return_2() {
@@ -114,7 +135,9 @@ mod test {
 
         let program = Parser::new(tokens).parse_program().unwrap();
 
-        let translated = AssemblyGenerator::new().translate(program);
+        let codegen = AssemblyGenerator::new();
+
+        let translated = codegen.translate(program);
 
         let ref_translation = Program {
             function: Function {
@@ -129,6 +152,25 @@ mod test {
             },
         };
 
-        assert_eq!(translated, ref_translation)
+        assert_eq!(translated, ref_translation);
+
+        let asm = codegen.generate_asm(translated);
+
+        let tmp_dir = tempdir().expect("Failed to create temporary directory");
+        let outpath = tmp_dir.path().join("return2.s");
+        let mut file = File::create(&outpath).expect("Failed to create temporary file");
+
+        write!(file, "{}", asm).expect("Failed to write file");
+
+        let status = Command::new("gcc")
+            .args([
+                outpath.as_os_str().to_str().unwrap(),
+                "-o",
+                tmp_dir.path().join("return2").as_os_str().to_str().unwrap(),
+            ])
+            .status()
+            .expect("assembling/linking failed");
+
+        assert!(status.success());
     }
 }
