@@ -1,10 +1,9 @@
-use std::fs::File;
 use std::vec;
 
 use crate::parser;
 
 #[derive(Debug, PartialEq)]
-struct Program {
+pub struct Program {
     function: Function,
 }
 
@@ -56,7 +55,7 @@ impl Register {
     }
 }
 
-struct AssemblyGenerator {}
+pub struct AssemblyGenerator {}
 impl AssemblyGenerator {
     pub fn new() -> Self {
         AssemblyGenerator {}
@@ -96,7 +95,7 @@ impl AssemblyGenerator {
         }
     }
 
-    fn generate_asm(&self, program: Program) -> String {
+    pub fn generate_asm(&self, program: Program) -> String {
         let mut lines: Vec<String> = Vec::new();
 
         lines.push(format!("\t.globl {}", program.function.name));
@@ -124,6 +123,7 @@ mod test {
     use crate::parser::Parser;
     use std::process::Command;
     use tempfile::tempdir;
+    use std::fs::File;
 
     #[test]
     fn return_2() {
@@ -162,15 +162,22 @@ mod test {
 
         write!(file, "{}", asm).expect("Failed to write file");
 
+        let exe_path = tmp_dir.path().join("return2");
         let status = Command::new("gcc")
             .args([
                 outpath.as_os_str().to_str().unwrap(),
                 "-o",
-                tmp_dir.path().join("return2").as_os_str().to_str().unwrap(),
+                exe_path.as_os_str().to_str().unwrap(),
             ])
             .status()
             .expect("assembling/linking failed");
 
         assert!(status.success());
+
+        let output = Command::new(exe_path)
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code().unwrap(), 2);
     }
 }

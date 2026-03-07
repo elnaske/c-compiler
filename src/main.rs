@@ -1,10 +1,11 @@
 use std::env;
-use std::fs::remove_file;
+use std::fs;
 use std::process::Command;
+use std::io::Write;
 
-mod lexer;
-mod parser;
-mod codegen;
+mod lexer; use lexer::Lexer;
+mod parser; use parser::Parser;
+mod codegen; use codegen::AssemblyGenerator;
 
 struct Config {
     infiles: Vec<String>,
@@ -45,43 +46,61 @@ impl Config {
     }
 }
 
-fn compile(cfg: Config) {
-    let binding = cfg.outfile.clone().expect("no output file");
-    let output = binding.as_str();
-    let preprocessor_output = output.to_owned() + ".i";
-    let assembly_output = output.to_owned() + ".s";
-
-    // preprocessor
+fn preprocess(infiles: &Vec<String>, outfile: &String) {
+    // TODO: multiple outfiles
     Command::new("gcc")
         .args([
             "-E",
             "-P",
-            &cfg.infiles.join(" "),
+            &infiles.join(" "),
             "-o",
-            &preprocessor_output,
+            outfile,
         ])
         .output()
         .expect("preprocessing failed");
+}
 
-    // compiler
-    // (using gcc for now for testing)
-    Command::new("gcc")
-        .args(["-S", &preprocessor_output, "-o", &assembly_output])
-        .output()
-        .expect("compilation failed");
+fn compile(infile: &String, outfile: &String) {
+    let code = fs::read_to_string(infile)
+        .expect("Failed to read file");
 
-    remove_file(preprocessor_output).expect("failed to remove preprocessed file");
-    
-    // assembler and linker
+    let tokens = Lexer::new(code.as_bytes()).get_tokens();
+
+    let program = Parser::new(tokens).parse_program().unwrap();
+
+    let codegen = AssemblyGenerator::new();
+    let translated = codegen.translate(program);
+    let asm = codegen.generate_asm(translated);
+
+    let mut file = fs::File::create(outfile).expect("Failed to create output file");
+    write!(file, "{}", asm).expect("Failed to write to output file");
+}
+
+fn assemble_and_link(assembly_file: &String, outfile: &String) {
     Command::new("gcc")
-        .args([&assembly_output, "-o", &output])
+        .args([assembly_file, "-o", outfile])
         .output()
         .expect("assembling/linking failed");
+}
 
-    remove_file(assembly_output).expect("failed to remove assembly file");
+fn run(cfg: Config) {
+    // TODO: better file handling (PathBuf?)
+    // let binding = cfg.outfile.clone().expect("no output file");
+    // let output = binding;
+    let output = cfg.outfile.clone().expect("no output file");
+    let preprocessor_output = output.to_owned() + ".i";
+    let assembly_output = output.to_owned() + ".s";
+
+    preprocess(&cfg.infiles, &preprocessor_output);
+
+    compile(&preprocessor_output, &assembly_output);
+    fs::remove_file(preprocessor_output).expect("failed to remove preprocessed file");
+
+    assemble_and_link(&assembly_output, &output);
+    fs::remove_file(assembly_output).expect("failed to remove assembly file");
 }
 
 fn main() {
     let cfg = Config::parse().unwrap();
-    compile(cfg);
+    run(cfg);
 }
