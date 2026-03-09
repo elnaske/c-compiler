@@ -129,6 +129,9 @@ impl<'a> Lexer<'a> {
         loop {
             match self.peek() {
                 Some(b'0'..=b'9') => self.advance(),
+                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
+                    panic!("invalid suffix on integer constant")
+                } // put this here to satisfy a test case, might change how this is handled in the future
                 _ => break,
             }
         }

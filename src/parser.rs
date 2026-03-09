@@ -66,9 +66,16 @@ impl Parser {
     }
 
     pub fn parse_program(&mut self) -> Result<Program, String> {
-        Ok(Program {
+        let program = Program {
             function: self.parse_function()?,
-        })
+        };
+
+        if self.pos < self.tokens.len() {
+            Err("leftover tokens after program".to_string())
+        }
+        else {
+            Ok(program)
+        }
     }
 
     // transfer ownership instead of returning reference?
