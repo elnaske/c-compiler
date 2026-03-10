@@ -9,6 +9,7 @@ mod parser;
 use parser::Parser;
 mod codegen;
 use codegen::AssemblyGenerator;
+mod errors;
 
 struct Config {
     infiles: Vec<String>,
