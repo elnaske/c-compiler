@@ -7,6 +7,9 @@ pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
+    BitwiseComplement,
+    Negation,
+    Decrement,
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
@@ -63,7 +66,10 @@ impl<'a> Lexer<'a> {
             match self.next_token() {
                 Ok(token) if token == Token::Eof => break,
                 Ok(token) => tokens.push(token),
-                Err(e) => {e.print(); panic!()},
+                Err(e) => {
+                    e.print();
+                    panic!()
+                }
             }
         }
         self.reset();
@@ -76,6 +82,20 @@ impl<'a> Lexer<'a> {
         match self.peek() {
             Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => Ok(self.lex_identifier()),
             Some(b'0'..=b'9') => self.lex_constant(),
+            Some(b'~') => {
+                self.advance();
+                Ok(Token::BitwiseComplement)
+            }
+            Some(b'-') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'-') => {
+                        self.advance();
+                        Ok(Token::Decrement)
+                    }
+                    _ => Ok(Token::Negation),
+                }
+            }
             Some(b'(') => {
                 self.advance();
                 Ok(Token::OpenParenthesis)
@@ -158,13 +178,13 @@ impl<'a> Lexer<'a> {
                 Some(b'0'..=b'9') => self.advance(),
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
                     // panic!("invalid suffix on integer constant")
-                    return Err(CompilerError{
+                    return Err(CompilerError {
                         kind: ErrorKind::InvalidIntSuffix,
                         filename: "TODO.c".to_string(),
                         line_string: "TODO".to_string(),
                         row: self.row,
                         col: self.col,
-                    })
+                    });
                 } // put this here to satisfy a test case, might change how this is handled in the future
                 _ => break,
             }
@@ -207,4 +227,47 @@ mod test {
         assert_eq!(ref_tokens, tokens);
         assert_eq!(lexer.pos, 0);
     }
+    
+    #[test]
+    fn return_not_neg_2() {
+        let code = b"int main(void) {
+        return ~(-2);
+        }";
+
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
+
+        let ref_tokens = vec![
+            Token::Keyword(Keyword::Int),
+            Token::Identifier("main".to_string()),
+            Token::OpenParenthesis,
+            Token::Keyword(Keyword::Void),
+            Token::CloseParenthesis,
+            Token::OpenBrace,
+            Token::Keyword(Keyword::Return),
+            Token::BitwiseComplement,
+            Token::OpenParenthesis,
+            Token::Negation,
+            Token::Constant(2),
+            Token::CloseParenthesis,
+            Token::Semicolon,
+            Token::CloseBrace,
+        ];
+
+        assert_eq!(ref_tokens, tokens);
+        assert_eq!(lexer.pos, 0);
+    }
+
+    #[test]
+    fn negation_vs_decrement() {
+        let code_neg = b"-2";
+        let code_dec = b"--2";
+
+        let neg_tokens = Lexer::new(code_neg).get_tokens();
+        let dec_tokens = Lexer::new(code_dec).get_tokens();
+
+        assert_eq!(neg_tokens, vec![Token::Negation, Token::Constant(2)]);
+        assert_eq!(dec_tokens, vec![Token::Decrement, Token::Constant(2)]);
+    }
+
 }
