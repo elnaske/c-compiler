@@ -10,15 +10,33 @@ pub struct CompilerError {
     pub col: usize,
 }
 impl CompilerError {
-    pub fn new(kind: ErrorKind, filename: String, line_string: String, row: usize, col: usize) -> Self {
-        CompilerError { kind, filename, line_string, row, col }
+    pub fn new(
+        kind: ErrorKind,
+        filename: String,
+        line_string: String,
+        row: usize,
+        col: usize,
+    ) -> Self {
+        CompilerError {
+            kind,
+            filename,
+            line_string,
+            row,
+            col,
+        }
     }
 
     pub fn print(&self) {
-        eprintln!("{}:{}:{}: error: {}", self.filename, self.row, self.col, self.kind.to_string());
+        eprintln!(
+            "{}:{}:{}: error: {}",
+            self.filename,
+            self.row,
+            self.col,
+            self.kind.to_string()
+        );
         // TODO: align these two lines better
         eprintln!("{:>5} | {}", self.row, self.line_string);
-        eprintln!("{:>5} | {:>width$}", "", "^", width=self.col);
+        eprintln!("{:>5} | {:>width$}", "", "^", width = self.col);
     }
 }
 
@@ -38,11 +56,10 @@ impl ErrorKind {
             ErrorKind::LeftoverTokens => "Remaining tokens after the end of program".to_string(),
             ErrorKind::Expected { expected, actual } => {
                 format!("Expected {:?}, found {:?}", expected, actual)
-            }
-            // ErrorKind::CLIInvalidFlag { flag } => format!("Invalid compiler flag `{}`", flag),
-            // ErrorKind::CLIMissingArg { flag, expected } => {
-            //     format!("Expected {} after `{}`", expected, flag)
-            // }
+            } // ErrorKind::CLIInvalidFlag { flag } => format!("Invalid compiler flag `{}`", flag),
+              // ErrorKind::CLIMissingArg { flag, expected } => {
+              //     format!("Expected {} after `{}`", expected, flag)
+              // }
         }
     }
 }

@@ -7,9 +7,7 @@ pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
-    BitwiseComplement,
-    Negation,
-    Decrement,
+    UnaryOp(UnaryOp),
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
@@ -34,6 +32,13 @@ impl Keyword {
             _ => None,
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum UnaryOp {
+    BitwiseComplement,
+    Negation,
+    Decrement,
 }
 
 pub struct Lexer<'a> {
@@ -81,16 +86,16 @@ impl<'a> Lexer<'a> {
             Some(b'0'..=b'9') => self.lex_constant(),
             Some(b'~') => {
                 self.advance();
-                Ok(Token::BitwiseComplement)
+                Ok(Token::UnaryOp(UnaryOp::BitwiseComplement))
             }
             Some(b'-') => {
                 self.advance();
                 match self.peek() {
                     Some(b'-') => {
                         self.advance();
-                        Ok(Token::Decrement)
+                        Ok(Token::UnaryOp(UnaryOp::Decrement))
                     }
-                    _ => Ok(Token::Negation),
+                    _ => Ok(Token::UnaryOp(UnaryOp::Negation)),
                 }
             }
             Some(b'(') => {
@@ -224,7 +229,7 @@ mod test {
         assert_eq!(ref_tokens, tokens);
         assert_eq!(lexer.pos, 0);
     }
-    
+
     #[test]
     fn return_not_neg_2() {
         let code = b"int main(void) {
@@ -242,9 +247,9 @@ mod test {
             Token::CloseParenthesis,
             Token::OpenBrace,
             Token::Keyword(Keyword::Return),
-            Token::BitwiseComplement,
+            Token::UnaryOp(UnaryOp::BitwiseComplement),
             Token::OpenParenthesis,
-            Token::Negation,
+            Token::UnaryOp(UnaryOp::Negation),
             Token::Constant(2),
             Token::CloseParenthesis,
             Token::Semicolon,
@@ -263,8 +268,13 @@ mod test {
         let neg_tokens = Lexer::new(code_neg).get_tokens();
         let dec_tokens = Lexer::new(code_dec).get_tokens();
 
-        assert_eq!(neg_tokens, vec![Token::Negation, Token::Constant(2)]);
-        assert_eq!(dec_tokens, vec![Token::Decrement, Token::Constant(2)]);
+        assert_eq!(
+            neg_tokens,
+            vec![Token::UnaryOp(UnaryOp::Negation), Token::Constant(2)]
+        );
+        assert_eq!(
+            dec_tokens,
+            vec![Token::UnaryOp(UnaryOp::Decrement), Token::Constant(2)]
+        );
     }
-
 }

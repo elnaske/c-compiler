@@ -61,7 +61,6 @@ impl Config {
     }
 }
 
-
 fn preprocess(infiles: &Vec<String>, outfile: &String) {
     // TODO: multiple outfiles
     Command::new("gcc")
@@ -70,7 +69,11 @@ fn preprocess(infiles: &Vec<String>, outfile: &String) {
         .expect("preprocessing failed");
 }
 
-fn compile(cfg: &Config, infile: &String, outfile: &String) -> Result<(), Box<dyn std::error::Error>>{
+fn compile(
+    cfg: &Config,
+    infile: &String,
+    outfile: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
     let code = fs::read_to_string(infile).expect("Failed to read file");
 
     let tokens = Lexer::new(code.as_bytes()).get_tokens();

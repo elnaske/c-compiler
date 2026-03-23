@@ -122,9 +122,9 @@ mod test {
     use super::*;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use std::fs::File;
     use std::process::Command;
     use tempfile::tempdir;
-    use std::fs::File;
 
     #[test]
     fn return_2() {
@@ -175,9 +175,7 @@ mod test {
 
         assert!(status.success());
 
-        let output = Command::new(exe_path)
-            .output()
-            .unwrap();
+        let output = Command::new(exe_path).output().unwrap();
 
         assert_eq!(output.status.code().unwrap(), 2);
     }

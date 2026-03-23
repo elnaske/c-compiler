@@ -1,4 +1,4 @@
-use crate::lexer::{Keyword, Token};
+use crate::lexer::{Keyword, Token, UnaryOp};
 use std::fmt::{self, Formatter};
 
 #[derive(Debug, PartialEq)]
@@ -54,17 +54,12 @@ impl fmt::Display for Expression {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum UnaryOp {
-    Complement,
-    Negate,
-}
-
 impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            UnaryOp::Complement => write!(f, "~"),
-            UnaryOp::Negate => write!(f, "-"),
+            UnaryOp::BitwiseComplement => write!(f, "~"),
+            UnaryOp::Negation => write!(f, "-"),
+            UnaryOp::Decrement => write!(f, "--"),
         }
     }
 }
@@ -89,8 +84,7 @@ impl Parser {
 
         if self.pos < self.tokens.len() {
             Err("leftover tokens after program".to_string())
-        }
-        else {
+        } else {
             Ok(program)
         }
     }
@@ -151,9 +145,11 @@ impl Parser {
     fn parse_expression(&mut self) -> Result<Expression, String> {
         match self.take_token() {
             Some(Token::Constant(i)) => Ok(Expression::Constant(*i)),
-            Some(Token::BitwiseComplement) => Ok(Expression::Unary(UnaryOp::Complement, Box::new(self.parse_expression()?))),
-            Some(Token::Negation) => Ok(Expression::Unary(UnaryOp::Negate, Box::new(self.parse_expression()?))),
-            Some(Token::Decrement) => unimplemented!(),
+            Some(Token::UnaryOp(UnaryOp::Decrement)) => unimplemented!(),
+            Some(Token::UnaryOp(unop)) => Ok(Expression::Unary(
+                unop.clone(),
+                Box::new(self.parse_expression()?),
+            )),
             Some(Token::OpenParenthesis) => {
                 let inner_exp = self.parse_expression()?;
                 self.expect(Token::CloseParenthesis)?;
@@ -190,7 +186,7 @@ mod test {
 
         assert_eq!(program, ref_program)
     }
-    
+
     #[test]
     fn return_neg_2() {
         let code = b"int main(void) {
@@ -206,13 +202,16 @@ mod test {
         let ref_program = Program {
             function: Function {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Unary(UnaryOp::Negate, Box::new(Expression::Constant(2)))),
+                body: Statement::Return(Expression::Unary(
+                    UnaryOp::Negation,
+                    Box::new(Expression::Constant(2)),
+                )),
             },
         };
 
         assert_eq!(program, ref_program)
     }
-    
+
     #[test]
     fn return_not_2() {
         let code = b"int main(void) {
@@ -228,13 +227,16 @@ mod test {
         let ref_program = Program {
             function: Function {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Unary(UnaryOp::Complement, Box::new(Expression::Constant(2)))),
+                body: Statement::Return(Expression::Unary(
+                    UnaryOp::BitwiseComplement,
+                    Box::new(Expression::Constant(2)),
+                )),
             },
         };
 
         assert_eq!(program, ref_program)
     }
-    
+
     #[test]
     fn return_not_neg_2() {
         let code = b"int main(void) {
@@ -250,7 +252,13 @@ mod test {
         let ref_program = Program {
             function: Function {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Unary(UnaryOp::Complement, Box::new(Expression::Unary(UnaryOp::Negate, Box::new(Expression::Constant(2)))))),
+                body: Statement::Return(Expression::Unary(
+                    UnaryOp::BitwiseComplement,
+                    Box::new(Expression::Unary(
+                        UnaryOp::Negation,
+                        Box::new(Expression::Constant(2)),
+                    )),
+                )),
             },
         };
 
