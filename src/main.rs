@@ -11,24 +11,26 @@ mod codegen;
 use codegen::AssemblyGenerator;
 mod errors;
 
+#[derive(PartialEq, PartialOrd)]
+enum CompilerStage {
+    Lexer,
+    Parser,
+    CodeGen,
+    CodeEmission,
+}
+
 struct Config {
     infiles: Vec<String>,
     outfile: Option<String>,
-    run_parser: bool,
-    run_codegen: bool,
-    emit_code: bool,
+    last_stage: CompilerStage,
 }
-
-// TODO: better file handling
 
 impl Config {
     fn new() -> Config {
         Config {
             infiles: Vec::new(),
             outfile: None,
-            run_parser: true,
-            run_codegen: true,
-            emit_code: true,
+            last_stage: CompilerStage::CodeEmission,
         }
     }
 
@@ -46,18 +48,9 @@ impl Config {
                             return Err(format!("expected file following `{}`", arg));
                         }
                     }
-                    "--lex" => {
-                        cfg.run_parser = false;
-                        cfg.run_codegen = false;
-                        cfg.emit_code = false;
-                    }
-                    "--parse" => {
-                        cfg.run_codegen = false;
-                        cfg.emit_code = false;
-                    }
-                    "--codegen" => {
-                        cfg.emit_code = false;
-                    }
+                    "--lex" => cfg.last_stage = CompilerStage::Lexer,
+                    "--parse" => cfg.last_stage = CompilerStage::Parser,
+                    "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
                     other => return Err(format!("illegal flag `{other}`")),
                 }
             } else {
@@ -67,6 +60,7 @@ impl Config {
         Ok(cfg)
     }
 }
+
 
 fn preprocess(infiles: &Vec<String>, outfile: &String) {
     // TODO: multiple outfiles
@@ -81,15 +75,15 @@ fn compile(cfg: &Config, infile: &String, outfile: &String) -> Result<(), Box<dy
 
     let tokens = Lexer::new(code.as_bytes()).get_tokens();
 
-    if cfg.run_parser {
+    if cfg.last_stage >= CompilerStage::Parser {
         let program = Parser::new(tokens).parse_program()?;
 
-        if cfg.run_codegen {
+        if cfg.last_stage >= CompilerStage::CodeGen {
             let codegen = AssemblyGenerator::new();
             let translated = codegen.translate(program);
             let asm = codegen.generate_asm(translated);
 
-            if cfg.emit_code {
+            if cfg.last_stage >= CompilerStage::CodeEmission {
                 let mut file = fs::File::create(outfile).expect("Failed to create output file");
                 write!(file, "{}", asm).expect("Failed to write to output file");
             }
@@ -111,7 +105,7 @@ fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
         Some(ref s) => s.clone(),
         None => "a.out".to_string(),
     };
-    // let output = cfg.outfile.clone().expect("no output file");
+
     let preprocessor_output = output.to_owned() + ".i";
     let assembly_output = output.to_owned() + ".s";
 
@@ -120,7 +114,7 @@ fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
     compile(&cfg, &preprocessor_output, &assembly_output)?;
     fs::remove_file(preprocessor_output).expect("failed to remove preprocessed file");
 
-    if cfg.emit_code {
+    if cfg.last_stage >= CompilerStage::CodeEmission {
         assemble_and_link(&assembly_output, &output);
         fs::remove_file(assembly_output).expect("failed to remove assembly file");
     }
