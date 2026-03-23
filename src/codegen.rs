@@ -92,6 +92,7 @@ impl AssemblyGenerator {
                 src: Operand::Imm(i),
                 dst: Operand::Register(Register::EAX),
             }],
+            parser::Expression::Unary(op, exp) => todo!(),
         }
     }
 

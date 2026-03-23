@@ -42,12 +42,29 @@ impl fmt::Display for Statement {
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Constant(i32),
+    Unary(UnaryOp, Box<Expression>),
 }
 
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expression::Constant(i) => write!(f, "Constant({})", i),
+            Expression::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UnaryOp {
+    Complement,
+    Negate,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Complement => write!(f, "~"),
+            UnaryOp::Negate => write!(f, "-"),
         }
     }
 }
@@ -134,6 +151,14 @@ impl Parser {
     fn parse_expression(&mut self) -> Result<Expression, String> {
         match self.take_token() {
             Some(Token::Constant(i)) => Ok(Expression::Constant(*i)),
+            Some(Token::BitwiseComplement) => Ok(Expression::Unary(UnaryOp::Complement, Box::new(self.parse_expression()?))),
+            Some(Token::Negation) => Ok(Expression::Unary(UnaryOp::Negate, Box::new(self.parse_expression()?))),
+            Some(Token::Decrement) => unimplemented!(),
+            Some(Token::OpenParenthesis) => {
+                let inner_exp = self.parse_expression()?;
+                self.expect(Token::CloseParenthesis)?;
+                Ok(inner_exp)
+            }
             other => Err(format!("Expected expression, found {:?}", other)),
         }
     }
@@ -160,6 +185,72 @@ mod test {
             function: Function {
                 name: "main".to_string(),
                 body: Statement::Return(Expression::Constant(2)),
+            },
+        };
+
+        assert_eq!(program, ref_program)
+    }
+    
+    #[test]
+    fn return_neg_2() {
+        let code = b"int main(void) {
+        return -2;
+        }";
+
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().unwrap();
+
+        let ref_program = Program {
+            function: Function {
+                name: "main".to_string(),
+                body: Statement::Return(Expression::Unary(UnaryOp::Negate, Box::new(Expression::Constant(2)))),
+            },
+        };
+
+        assert_eq!(program, ref_program)
+    }
+    
+    #[test]
+    fn return_not_2() {
+        let code = b"int main(void) {
+        return ~2;
+        }";
+
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().unwrap();
+
+        let ref_program = Program {
+            function: Function {
+                name: "main".to_string(),
+                body: Statement::Return(Expression::Unary(UnaryOp::Complement, Box::new(Expression::Constant(2)))),
+            },
+        };
+
+        assert_eq!(program, ref_program)
+    }
+    
+    #[test]
+    fn return_not_neg_2() {
+        let code = b"int main(void) {
+        return (~((-2)));
+        }";
+
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().unwrap();
+
+        let ref_program = Program {
+            function: Function {
+                name: "main".to_string(),
+                body: Statement::Return(Expression::Unary(UnaryOp::Complement, Box::new(Expression::Unary(UnaryOp::Negate, Box::new(Expression::Constant(2)))))),
             },
         };
 

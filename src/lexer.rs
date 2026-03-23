@@ -36,9 +36,6 @@ impl Keyword {
     }
 }
 
-// TODO:
-// - what happens to Lexer when done? reset automatically or manually?
-// - better error handling
 pub struct Lexer<'a> {
     input: &'a [u8],
     pos: usize,
