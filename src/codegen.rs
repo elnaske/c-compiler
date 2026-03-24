@@ -1,58 +1,58 @@
 use std::vec;
 
-use crate::parser;
+use crate::parser::*;
 
 // TODO: separate mod or prefix for namespace
 
 #[derive(Debug, PartialEq)]
-pub struct Program {
-    function: Function,
+pub struct AsmProgram {
+    function: AsmFunction,
 }
 
 #[derive(Debug, PartialEq)]
-struct Function {
+struct AsmFunction {
     name: String,
-    instructions: Vec<Instruction>,
+    instructions: Vec<AsmInstruction>,
 }
 
 #[derive(Debug, PartialEq)]
-enum Instruction {
-    Mov { src: Operand, dst: Operand },
+enum AsmInstruction {
+    Mov { src: AsmOperand, dst: AsmOperand },
     Ret,
 }
-impl Instruction {
+impl AsmInstruction {
     fn to_string(&self) -> String {
         match self {
-            Instruction::Mov { src, dst } => {
+            AsmInstruction::Mov { src, dst } => {
                 format!("\tmovl\t{}, {}", src.to_string(), dst.to_string())
             }
-            Instruction::Ret => "\tret".to_string(),
+            AsmInstruction::Ret => "\tret".to_string(),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-enum Operand {
+enum AsmOperand {
     Imm(i32),
-    Register(Register),
+    Register(AsmRegister),
 }
-impl Operand {
+impl AsmOperand {
     fn to_string(&self) -> String {
         match self {
-            Operand::Imm(i) => format!("${}", i),
-            Operand::Register(reg) => format!("%{}", reg.to_string()),
+            AsmOperand::Imm(i) => format!("${}", i),
+            AsmOperand::Register(reg) => format!("%{}", reg.to_string()),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-enum Register {
+enum AsmRegister {
     EAX,
 }
-impl Register {
+impl AsmRegister {
     fn to_string(&self) -> String {
         match self {
-            Register::EAX => "EAX".to_string(),
+            AsmRegister::EAX => "EAX".to_string(),
         }
     }
 }
@@ -65,42 +65,42 @@ impl AssemblyGenerator {
         AssemblyGenerator {}
     }
 
-    pub fn translate(&self, c_program: parser::Program) -> Program {
-        Program {
+    pub fn translate(&self, c_program: CProgram) -> AsmProgram {
+        AsmProgram {
             function: self.translate_function(c_program.function),
         }
     }
 
-    fn translate_function(&self, c_function: parser::Function) -> Function {
-        Function {
+    fn translate_function(&self, c_function: CFunction) -> AsmFunction {
+        AsmFunction {
             name: c_function.name,
             instructions: self.translate_statement(c_function.body),
         }
     }
 
-    fn translate_statement(&self, statement: parser::Statement) -> Vec<Instruction> {
-        let mut instructions: Vec<Instruction> = Vec::new();
+    fn translate_statement(&self, statement: CStatement) -> Vec<AsmInstruction> {
+        let mut instructions: Vec<AsmInstruction> = Vec::new();
 
         match statement {
-            parser::Statement::Return(exp) => {
+            CStatement::Return(exp) => {
                 instructions.append(&mut self.translate_expression(exp));
-                instructions.push(Instruction::Ret);
+                instructions.push(AsmInstruction::Ret);
             }
         }
         instructions
     }
 
-    fn translate_expression(&self, expression: parser::Expression) -> Vec<Instruction> {
+    fn translate_expression(&self, expression: CExpression) -> Vec<AsmInstruction> {
         match expression {
-            parser::Expression::Constant(i) => vec![Instruction::Mov {
-                src: Operand::Imm(i),
-                dst: Operand::Register(Register::EAX),
+            CExpression::Constant(i) => vec![AsmInstruction::Mov {
+                src: AsmOperand::Imm(i),
+                dst: AsmOperand::Register(AsmRegister::EAX),
             }],
-            parser::Expression::Unary(_op, _exp) => todo!(),
+            CExpression::Unary(_op, _exp) => todo!(),
         }
     }
 
-    pub fn generate_asm(&self, program: Program) -> String {
+    pub fn generate_asm(&self, program: AsmProgram) -> String {
         let mut lines: Vec<String> = Vec::new();
 
         lines.push(format!("\t.globl {}", program.function.name));
@@ -144,15 +144,15 @@ mod test {
 
         let translated = codegen.translate(program);
 
-        let ref_translation = Program {
-            function: Function {
+        let ref_translation = AsmProgram {
+            function: AsmFunction {
                 name: "main".to_string(),
                 instructions: vec![
-                    Instruction::Mov {
-                        src: Operand::Imm(2),
-                        dst: Operand::Register(Register::EAX),
+                    AsmInstruction::Mov {
+                        src: AsmOperand::Imm(2),
+                        dst: AsmOperand::Register(AsmRegister::EAX),
                     },
-                    Instruction::Ret,
+                    AsmInstruction::Ret,
                 ],
             },
         };

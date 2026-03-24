@@ -1,38 +1,40 @@
 use crate::lexer::{Keyword, Token, UnaryOp};
 use std::fmt::{self, Formatter};
 
+// TODO: factor out ASTs into separate files
+
 #[derive(Debug, PartialEq)]
-pub struct Program {
-    pub function: Function,
+pub struct CProgram {
+    pub function: CFunction,
 }
 
-impl fmt::Display for Program {
+impl fmt::Display for CProgram {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Program({})", self.function)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Function {
+pub struct CFunction {
     pub name: String,
-    pub body: Statement,
+    pub body: CStatement,
 }
 
-impl fmt::Display for Function {
+impl fmt::Display for CFunction {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Function(name='{}', body={})", self.name, self.body,)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Statement {
-    Return(Expression),
+pub enum CStatement {
+    Return(CExpression),
 }
 
-impl fmt::Display for Statement {
+impl fmt::Display for CStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Return(exp) => {
+            CStatement::Return(exp) => {
                 write!(f, "Return({})", exp)
             }
         }
@@ -40,16 +42,16 @@ impl fmt::Display for Statement {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Expression {
+pub enum CExpression {
     Constant(i32),
-    Unary(UnaryOp, Box<Expression>),
+    Unary(UnaryOp, Box<CExpression>),
 }
 
-impl fmt::Display for Expression {
+impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Constant(i) => write!(f, "Constant({})", i),
-            Expression::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
+            CExpression::Constant(i) => write!(f, "Constant({})", i),
+            CExpression::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
         }
     }
 }
@@ -77,8 +79,8 @@ impl Parser {
         }
     }
 
-    pub fn parse_program(&mut self) -> Result<Program, String> {
-        let program = Program {
+    pub fn parse_program(&mut self) -> Result<CProgram, String> {
+        let program = CProgram {
             function: self.parse_function()?,
         };
 
@@ -107,7 +109,7 @@ impl Parser {
         }
     }
 
-    fn parse_function(&mut self) -> Result<Function, String> {
+    fn parse_function(&mut self) -> Result<CFunction, String> {
         self.expect(Token::Keyword(Keyword::Int))?;
 
         let name = self.parse_identifier()?;
@@ -121,17 +123,17 @@ impl Parser {
 
         self.expect(Token::CloseBrace)?;
 
-        Ok(Function { name, body })
+        Ok(CFunction { name, body })
     }
 
-    fn parse_statement(&mut self) -> Result<Statement, String> {
+    fn parse_statement(&mut self) -> Result<CStatement, String> {
         self.expect(Token::Keyword(Keyword::Return))?;
 
         let expression = self.parse_expression()?;
 
         self.expect(Token::Semicolon)?;
 
-        Ok(Statement::Return(expression))
+        Ok(CStatement::Return(expression))
     }
 
     fn parse_identifier(&mut self) -> Result<String, String> {
@@ -141,11 +143,11 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self) -> Result<Expression, String> {
+    fn parse_expression(&mut self) -> Result<CExpression, String> {
         match self.take_token() {
-            Some(Token::Constant(i)) => Ok(Expression::Constant(*i)),
+            Some(Token::Constant(i)) => Ok(CExpression::Constant(*i)),
             Some(Token::UnaryOp(UnaryOp::Decrement)) => unimplemented!(),
-            Some(Token::UnaryOp(unop)) => Ok(Expression::Unary(
+            Some(Token::UnaryOp(unop)) => Ok(CExpression::Unary(
                 unop.clone(),
                 Box::new(self.parse_expression()?),
             )),
@@ -176,10 +178,10 @@ mod test {
         let mut parser = Parser::new(tokens);
         let program = parser.parse_program().unwrap();
 
-        let ref_program = Program {
-            function: Function {
+        let ref_program = CProgram {
+            function: CFunction {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Constant(2)),
+                body: CStatement::Return(CExpression::Constant(2)),
             },
         };
 
@@ -198,12 +200,12 @@ mod test {
         let mut parser = Parser::new(tokens);
         let program = parser.parse_program().unwrap();
 
-        let ref_program = Program {
-            function: Function {
+        let ref_program = CProgram {
+            function: CFunction {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Unary(
+                body: CStatement::Return(CExpression::Unary(
                     UnaryOp::Negation,
-                    Box::new(Expression::Constant(2)),
+                    Box::new(CExpression::Constant(2)),
                 )),
             },
         };
@@ -223,12 +225,12 @@ mod test {
         let mut parser = Parser::new(tokens);
         let program = parser.parse_program().unwrap();
 
-        let ref_program = Program {
-            function: Function {
+        let ref_program = CProgram {
+            function: CFunction {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Unary(
+                body: CStatement::Return(CExpression::Unary(
                     UnaryOp::BitwiseComplement,
-                    Box::new(Expression::Constant(2)),
+                    Box::new(CExpression::Constant(2)),
                 )),
             },
         };
@@ -248,14 +250,14 @@ mod test {
         let mut parser = Parser::new(tokens);
         let program = parser.parse_program().unwrap();
 
-        let ref_program = Program {
-            function: Function {
+        let ref_program = CProgram {
+            function: CFunction {
                 name: "main".to_string(),
-                body: Statement::Return(Expression::Unary(
+                body: CStatement::Return(CExpression::Unary(
                     UnaryOp::BitwiseComplement,
-                    Box::new(Expression::Unary(
+                    Box::new(CExpression::Unary(
                         UnaryOp::Negation,
-                        Box::new(Expression::Constant(2)),
+                        Box::new(CExpression::Constant(2)),
                     )),
                 )),
             },
