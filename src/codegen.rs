@@ -2,6 +2,8 @@ use std::vec;
 
 use crate::parser;
 
+// TODO: separate mod or prefix for namespace
+
 #[derive(Debug, PartialEq)]
 pub struct Program {
     function: Function,
@@ -55,6 +57,8 @@ impl Register {
     }
 }
 
+// TODO: refactor to use IR
+// TODO: remove AssemblyGenerator and use impl on types (?)
 pub struct AssemblyGenerator {}
 impl AssemblyGenerator {
     pub fn new() -> Self {
@@ -92,7 +96,7 @@ impl AssemblyGenerator {
                 src: Operand::Imm(i),
                 dst: Operand::Register(Register::EAX),
             }],
-            parser::Expression::Unary(op, exp) => todo!(),
+            parser::Expression::Unary(_op, _exp) => todo!(),
         }
     }
 

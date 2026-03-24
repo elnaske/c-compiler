@@ -89,7 +89,6 @@ impl Parser {
         }
     }
 
-    // transfer ownership instead of returning reference?
     fn take_token(&mut self) -> Option<&Token> {
         let token = self.tokens.get(self.pos);
         self.pos += 1;

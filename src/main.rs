@@ -3,13 +3,14 @@ use std::fs;
 use std::io::Write;
 use std::process::Command;
 
-mod lexer;
+pub mod lexer;
 use lexer::Lexer;
-mod parser;
+pub mod parser;
 use parser::Parser;
-mod codegen;
+pub mod codegen;
 use codegen::AssemblyGenerator;
-mod errors;
+pub mod errors;
+pub mod ir;
 
 #[derive(PartialEq, PartialOrd)]
 enum CompilerStage {
