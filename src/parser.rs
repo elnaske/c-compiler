@@ -3,7 +3,7 @@ use std::fmt::{self, Formatter};
 
 // TODO: factor out ASTs into separate files
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)] // TODO: remove clone once ir->asm finished
 pub struct CProgram {
     pub function: CFunction,
 }
@@ -14,7 +14,7 @@ impl fmt::Display for CProgram {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct CFunction {
     pub name: String,
     pub body: CStatement,
@@ -26,7 +26,7 @@ impl fmt::Display for CFunction {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CStatement {
     Return(CExpression),
 }
@@ -41,7 +41,7 @@ impl fmt::Display for CStatement {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CExpression {
     Constant(i32),
     Unary(UnaryOp, Box<CExpression>),

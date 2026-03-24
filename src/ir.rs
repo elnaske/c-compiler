@@ -5,23 +5,11 @@ use crate::parser::*;
 pub struct IRProgram {
     function: IRFunction,
 }
-impl IRProgram {
-    pub fn from_c(c_program: CProgram) -> Self {
-        IRProgram {
-            function: IRFunction::from_c(c_program.function),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq)]
 struct IRFunction {
     name: String,
     instructions: Vec<IRInstruction>,
-}
-impl IRFunction {
-    pub fn from_c(c_function: CFunction) -> Self {
-        IRFunction { name: c_function.name, instructions: statement_to_instructions(c_function.body) }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -33,45 +21,67 @@ enum IRInstruction {
 #[derive(Debug, PartialEq, Clone)]
 enum Val {
     Constant(i32),
-    Var(String),
+    Var(TempId),
 }
 
-// TODO: TempId struct instead of String
-// TODO: IRGenerator struct
-// TODO: Add IR to main
-// TODO: Add IR compiler flag
+#[derive(Debug, PartialEq, Clone)]
+struct TempId(usize);
 
-fn statement_to_instructions(c_statement: CStatement) -> Vec<IRInstruction> {
-    let mut instructions = Vec::<IRInstruction>::new();
+pub struct IRGenerator {
+    next_var_id: usize,
+}
+impl IRGenerator {
+    pub fn new() -> Self {
+        IRGenerator { next_var_id: 0 }
+    }
 
-    match c_statement {
-        CStatement::Return(exp) => {
-            let (return_val, mut exp_instructions) = exp_to_instructions(exp);
-            instructions.append(&mut exp_instructions);
-            instructions.push(IRInstruction::Return(return_val));
+    fn create_temp_var(&mut self) -> TempId {
+        let id = self.next_var_id;
+        self.next_var_id += 1;
+        TempId(id)
+    }
+
+    pub fn c_to_ir(&mut self, c_program: CProgram) -> IRProgram {
+        IRProgram {
+            function: self.translate_function(c_program.function),
         }
     }
-    instructions
-}
 
-fn exp_to_instructions(c_expression: CExpression) -> (Val, Vec<IRInstruction>) {
-    let val;
-    let mut instructions = Vec::<IRInstruction>::new();
-    
-    match c_expression {
-        CExpression::Constant(i) => val = Val::Constant(i),
-        CExpression::Unary(op, inner_exp) => {
-            let (src, mut inner_instructions) = exp_to_instructions(*inner_exp);
-            let dst = Val::Var(create_temp_var_name());
-            
-            val = dst.clone();
-            instructions.append(&mut inner_instructions);
-            instructions.push(IRInstruction::Unary { op, src, dst });
+    fn translate_function(&mut self, c_function: CFunction) -> IRFunction {
+        IRFunction {
+            name: c_function.name,
+            instructions: self.statement_to_instructions(c_function.body),
         }
     }
-    (val, instructions)
-}
 
-fn create_temp_var_name() -> String {
-    todo!()
+    fn statement_to_instructions(&mut self, c_statement: CStatement) -> Vec<IRInstruction> {
+        let mut instructions = Vec::<IRInstruction>::new();
+
+        match c_statement {
+            CStatement::Return(exp) => {
+                let (return_val, mut exp_instructions) = self.exp_to_instructions(exp);
+                instructions.append(&mut exp_instructions);
+                instructions.push(IRInstruction::Return(return_val));
+            }
+        }
+        instructions
+    }
+
+    fn exp_to_instructions(&mut self, c_expression: CExpression) -> (Val, Vec<IRInstruction>) {
+        let val;
+        let mut instructions = Vec::<IRInstruction>::new();
+
+        match c_expression {
+            CExpression::Constant(i) => val = Val::Constant(i),
+            CExpression::Unary(op, inner_exp) => {
+                let (src, mut inner_instructions) = self.exp_to_instructions(*inner_exp);
+                let dst = Val::Var(self.create_temp_var());
+
+                val = dst.clone();
+                instructions.append(&mut inner_instructions);
+                instructions.push(IRInstruction::Unary { op, src, dst });
+            }
+        }
+        (val, instructions)
+    }
 }

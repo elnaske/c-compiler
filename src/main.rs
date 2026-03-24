@@ -11,11 +11,13 @@ pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
 pub mod ir;
+use ir::IRGenerator;
 
 #[derive(PartialEq, PartialOrd)]
 enum CompilerStage {
     Lexer,
     Parser,
+    IR,
     CodeGen,
     CodeEmission,
 }
@@ -50,6 +52,7 @@ impl Config {
                         }
                     }
                     "--lex" => cfg.last_stage = CompilerStage::Lexer,
+                    "--tacky" => cfg.last_stage = CompilerStage::IR,
                     "--parse" => cfg.last_stage = CompilerStage::Parser,
                     "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
                     other => return Err(format!("illegal flag `{other}`")),
@@ -80,16 +83,20 @@ fn compile(
     let tokens = Lexer::new(code.as_bytes()).get_tokens();
 
     if cfg.last_stage >= CompilerStage::Parser {
-        let program = Parser::new(tokens).parse_program()?;
+        let c_program = Parser::new(tokens).parse_program()?;
 
-        if cfg.last_stage >= CompilerStage::CodeGen {
-            let codegen = AssemblyGenerator::new();
-            let translated = codegen.translate(program);
-            let asm = codegen.generate_asm(translated);
+        if cfg.last_stage >= CompilerStage::IR {
+            let ir_program = IRGenerator::new().c_to_ir(c_program.clone());
+            
+            if cfg.last_stage >= CompilerStage::CodeGen {
+                let codegen = AssemblyGenerator::new();
+                let asm_program= codegen.translate(c_program);
+                let asm = codegen.generate_asm(asm_program);
 
-            if cfg.last_stage >= CompilerStage::CodeEmission {
-                let mut file = fs::File::create(outfile).expect("Failed to create output file");
-                write!(file, "{}", asm).expect("Failed to write to output file");
+                if cfg.last_stage >= CompilerStage::CodeEmission {
+                    let mut file = fs::File::create(outfile).expect("Failed to create output file");
+                    write!(file, "{}", asm).expect("Failed to write to output file");
+                }
             }
         }
     }
