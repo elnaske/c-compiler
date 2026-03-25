@@ -1,4 +1,5 @@
 use crate::{ir::*, lexer::UnaryOp};
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct AsmProgram {
@@ -42,7 +43,7 @@ enum AsmOperand {
     Imm(i32),
     Register(AsmRegister),
     PseudoReg(TempId),
-    Stack(i32),
+    Stack(usize),
 }
 impl AsmOperand {
     fn to_string(&self) -> String {
@@ -50,7 +51,7 @@ impl AsmOperand {
             Self::Imm(i) => format!("${}", i),
             Self::Register(reg) => format!("%{}", reg.to_string()),
             Self::PseudoReg(tmp) => unimplemented!(),
-            Self::Stack(offset) => format!("{}(%rbp)", offset),
+            Self::Stack(offset) => format!("-{}(%rbp)", offset),
         }
     }
 }
@@ -83,15 +84,51 @@ impl AssemblyGenerator {
 
     pub fn ir_to_asm(&self, ir_program: IRProgram) -> AsmProgram {
         let mut asm_program = self.translate_program(ir_program);
-        asm_program = self.replace_pseudo_registers(asm_program);
-        self.fix_instructions(asm_program)
+        let stack_size = self.replace_pseudo_registers(&mut asm_program);
+        self.fix_instructions(&mut asm_program);
+        asm_program
     }
 
-    fn replace_pseudo_registers(&self, asm_program: AsmProgram) -> AsmProgram {
-        todo!() // in-place instead of returning?
+    fn replace_pseudo_registers(&self, asm_program: &mut AsmProgram) -> usize {
+        let mut tmp_to_offset = HashMap::<TempId, usize>::new();
+        let mut curr_offset: usize = 0;
+
+        for instruction in &mut asm_program.function.instructions {
+            match instruction {
+                AsmInstruction::Mov { src, dst } => {
+                    self.pseudo_to_stack(src, &mut curr_offset, &mut tmp_to_offset);
+                    self.pseudo_to_stack(dst, &mut curr_offset, &mut tmp_to_offset);
+                }
+                AsmInstruction::Unary {
+                    operator: _,
+                    operand,
+                } => self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset),
+                _ => (),
+            }
+        }
+        curr_offset
     }
 
-    fn fix_instructions(&self, asm_program: AsmProgram) -> AsmProgram {
+    fn pseudo_to_stack(
+        &self,
+        operand: &mut AsmOperand,
+        curr_offset: &mut usize,
+        tmp_to_offset: &mut HashMap<TempId, usize>,
+    ) {
+        if let AsmOperand::PseudoReg(tmp) = operand {
+            let stack_offset = match tmp_to_offset.get(tmp) {
+                Some(offset) => *offset,
+                None => {
+                    *curr_offset += 4;
+                    tmp_to_offset.insert(tmp.clone(), *curr_offset);
+                    *curr_offset
+                }
+            };
+            *operand = AsmOperand::Stack(stack_offset);
+        };
+    }
+
+    fn fix_instructions(&self, asm_program: &mut AsmProgram) {
         todo!()
     }
 

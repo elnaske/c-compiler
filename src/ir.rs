@@ -24,7 +24,7 @@ pub enum IRVal {
     Var(TempId),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct TempId(usize);
 
 pub struct IRGenerator {
