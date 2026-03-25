@@ -1,28 +1,43 @@
 use std::env;
 use std::fs;
-use std::process::Command;
 use std::io::Write;
+use std::process::Command;
 
-mod lexer; use lexer::Lexer;
-mod parser; use parser::Parser;
-mod codegen; use codegen::AssemblyGenerator;
+pub mod lexer;
+use lexer::Lexer;
+pub mod parser;
+use parser::Parser;
+pub mod codegen;
+use codegen::AssemblyGenerator;
+pub mod errors;
+pub mod ir;
+use ir::IRGenerator;
+
+#[derive(PartialEq, PartialOrd)]
+enum CompilerStage {
+    Lexer,
+    Parser,
+    IR,
+    CodeGen,
+    CodeEmission,
+}
 
 struct Config {
     infiles: Vec<String>,
     outfile: Option<String>,
+    last_stage: CompilerStage,
 }
-
-// TODO: better file handling
 
 impl Config {
     fn new() -> Config {
         Config {
             infiles: Vec::new(),
             outfile: None,
+            last_stage: CompilerStage::CodeEmission,
         }
     }
 
-    fn parse() -> Result<Config, &'static str> {
+    fn parse() -> Result<Config, String> {
         let mut cfg = Config::new();
         let mut args = env::args().collect::<Vec<String>>().into_iter().skip(1);
 
@@ -33,10 +48,14 @@ impl Config {
                         if let Some(file) = args.next() {
                             cfg.outfile = Some(file)
                         } else {
-                            return Err("expected file following output flag");
+                            return Err(format!("expected file following `{}`", arg));
                         }
                     }
-                    _ => return Err("illegal option"),
+                    "--lex" => cfg.last_stage = CompilerStage::Lexer,
+                    "--tacky" => cfg.last_stage = CompilerStage::IR,
+                    "--parse" => cfg.last_stage = CompilerStage::Parser,
+                    "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
+                    other => return Err(format!("illegal flag `{other}`")),
                 }
             } else {
                 cfg.infiles.push(arg)
@@ -46,61 +65,75 @@ impl Config {
     }
 }
 
-fn preprocess(infiles: &Vec<String>, outfile: &String) {
+fn preprocess(infiles: &[String], outfile: &str) {
     // TODO: multiple outfiles
     Command::new("gcc")
-        .args([
-            "-E",
-            "-P",
-            &infiles.join(" "),
-            "-o",
-            outfile,
-        ])
+        .args(["-E", "-P", &infiles.join(" "), "-o", outfile])
         .output()
         .expect("preprocessing failed");
 }
 
-fn compile(infile: &String, outfile: &String) {
-    let code = fs::read_to_string(infile)
-        .expect("Failed to read file");
+fn compile(
+    cfg: &Config,
+    infile: &String,
+    outfile: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let code = fs::read_to_string(infile).expect("Failed to read file");
 
     let tokens = Lexer::new(code.as_bytes()).get_tokens();
 
-    let program = Parser::new(tokens).parse_program().unwrap();
+    if cfg.last_stage >= CompilerStage::Parser {
+        let c_program = Parser::new(tokens).parse_program()?;
 
-    let codegen = AssemblyGenerator::new();
-    let translated = codegen.translate(program);
-    let asm = codegen.generate_asm(translated);
+        if cfg.last_stage >= CompilerStage::IR {
+            let ir_program = IRGenerator::new().c_to_ir(c_program);
+            
+            if cfg.last_stage >= CompilerStage::CodeGen {
+                let codegen = AssemblyGenerator::new();
+                let asm_program= codegen.ir_to_asm(ir_program);
+                let asm = codegen.generate_asm(asm_program);
 
-    let mut file = fs::File::create(outfile).expect("Failed to create output file");
-    write!(file, "{}", asm).expect("Failed to write to output file");
+                if cfg.last_stage >= CompilerStage::CodeEmission {
+                    let mut file = fs::File::create(outfile).expect("Failed to create output file");
+                    write!(file, "{}", asm).expect("Failed to write to output file");
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
-fn assemble_and_link(assembly_file: &String, outfile: &String) {
+fn assemble_and_link(assembly_file: &str, outfile: &str) {
     Command::new("gcc")
         .args([assembly_file, "-o", outfile])
         .output()
         .expect("assembling/linking failed");
 }
 
-fn run(cfg: Config) {
+fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
     // TODO: better file handling (PathBuf?)
-    // let binding = cfg.outfile.clone().expect("no output file");
-    // let output = binding;
-    let output = cfg.outfile.clone().expect("no output file");
+    let output = match cfg.outfile {
+        Some(ref s) => s.clone(),
+        None => "a.out".to_string(),
+    };
+
     let preprocessor_output = output.to_owned() + ".i";
     let assembly_output = output.to_owned() + ".s";
 
     preprocess(&cfg.infiles, &preprocessor_output);
 
-    compile(&preprocessor_output, &assembly_output);
+    compile(&cfg, &preprocessor_output, &assembly_output)?;
     fs::remove_file(preprocessor_output).expect("failed to remove preprocessed file");
 
-    assemble_and_link(&assembly_output, &output);
-    fs::remove_file(assembly_output).expect("failed to remove assembly file");
+    if cfg.last_stage >= CompilerStage::CodeEmission {
+        assemble_and_link(&assembly_output, &output);
+        fs::remove_file(assembly_output).expect("failed to remove assembly file");
+    }
+    Ok(())
 }
 
-fn main() {
-    let cfg = Config::parse().unwrap();
-    run(cfg);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = Config::parse()?;
+    run(cfg)?;
+    Ok(())
 }

@@ -1,13 +1,17 @@
+use crate::errors::{CompilerError, ErrorKind};
+
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
+    UnaryOp(UnaryOp),
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
     CloseBrace,
     Semicolon,
+    Eof,
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,17 +32,28 @@ impl Keyword {
     }
 }
 
-// TODO:
-// - what happens to Lexer when done? reset automatically or manually?
-// - better error handling
+#[derive(Debug, PartialEq, Clone)]
+pub enum UnaryOp {
+    BitwiseComplement,
+    Negation,
+    Decrement,
+}
+
 pub struct Lexer<'a> {
     input: &'a [u8],
     pos: usize,
+    row: usize,
+    col: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a [u8]) -> Self {
-        Lexer { input, pos: 0 }
+        Lexer {
+            input,
+            pos: 0,
+            row: 1,
+            col: 1,
+        }
     }
 
     pub fn reset(&mut self) {
@@ -46,43 +61,69 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn get_tokens(&mut self) -> Vec<Token> {
-        // parse tokens (self.next_token) until EOF
         let mut tokens = Vec::<Token>::new();
-        while let Some(token) = self.next_token() {
-            tokens.push(token);
+        loop {
+            match self.next_token() {
+                Ok(Token::Eof) => break,
+                Ok(token) => tokens.push(token),
+                Err(e) => {
+                    e.print();
+                    panic!()
+                }
+            }
         }
         self.reset();
         tokens
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Result<Token, CompilerError> {
         self.skip_whitespace();
 
         match self.peek() {
-            Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => Some(self.lex_identifier()),
-            Some(b'0'..=b'9') => Some(self.lex_constant()),
+            Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => Ok(self.lex_identifier()),
+            Some(b'0'..=b'9') => self.lex_constant(),
+            Some(b'~') => {
+                self.advance();
+                Ok(Token::UnaryOp(UnaryOp::BitwiseComplement))
+            }
+            Some(b'-') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'-') => {
+                        self.advance();
+                        Ok(Token::UnaryOp(UnaryOp::Decrement))
+                    }
+                    _ => Ok(Token::UnaryOp(UnaryOp::Negation)),
+                }
+            }
             Some(b'(') => {
                 self.advance();
-                Some(Token::OpenParenthesis)
+                Ok(Token::OpenParenthesis)
             }
             Some(b')') => {
                 self.advance();
-                Some(Token::CloseParenthesis)
+                Ok(Token::CloseParenthesis)
             }
             Some(b'{') => {
                 self.advance();
-                Some(Token::OpenBrace)
+                Ok(Token::OpenBrace)
             }
             Some(b'}') => {
                 self.advance();
-                Some(Token::CloseBrace)
+                Ok(Token::CloseBrace)
             }
             Some(b';') => {
                 self.advance();
-                Some(Token::Semicolon)
+                Ok(Token::Semicolon)
             }
-            None => None,
-            _ => panic!("illegal character"),
+            None => Ok(Token::Eof),
+            _ => Err(CompilerError {
+                kind: ErrorKind::InvalidCharacter,
+                filename: "TODO.c".to_string(),
+                line_string: "TODO".to_string(),
+                row: self.row,
+                col: self.col,
+            }),
         }
     }
 
@@ -91,27 +132,28 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self) {
+        if self.peek() == Some(b'\n') {
+            self.row += 1; // this doesn't work right; idk why
+            self.col = 1;
+        } else {
+            self.col += 1
+        }
         self.pos += 1;
     }
 
     fn skip_whitespace(&mut self) {
-        loop {
-            match self.peek() {
-                Some(b' ' | b'\t' | b'\n' | b'\r') => self.advance(),
-                _ => break,
-            }
+        while let Some(b' ' | b'\t' | b'\n' | b'\r') = self.peek() {
+            self.advance();
         }
     }
 
     fn lex_identifier(&mut self) -> Token {
         let start = self.pos;
 
-        loop {
-            match self.peek() {
-                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'0'..=b'9') => self.advance(),
-                _ => break,
-            }
+        while let Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'0'..=b'9') = self.peek() {
+            self.advance();
         }
+
         if let Some(keyword) = Keyword::from_u8(&self.input[start..self.pos]) {
             Token::Keyword(keyword)
         } else {
@@ -123,21 +165,31 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_constant(&mut self) -> Token {
+    fn lex_constant(&mut self) -> Result<Token, CompilerError> {
         let start = self.pos;
 
         loop {
             match self.peek() {
                 Some(b'0'..=b'9') => self.advance(),
+                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
+                    // panic!("invalid suffix on integer constant")
+                    return Err(CompilerError {
+                        kind: ErrorKind::InvalidIntSuffix,
+                        filename: "TODO.c".to_string(),
+                        line_string: "TODO".to_string(),
+                        row: self.row,
+                        col: self.col,
+                    });
+                } // put this here to satisfy a test case, might change how this is handled in the future
                 _ => break,
             }
         }
-        Token::Constant(
+        Ok(Token::Constant(
             str::from_utf8(&self.input[start..self.pos])
                 .expect("Invalid UTF-8 sequence")
                 .parse()
                 .expect("Not a valid number"),
-        )
+        ))
     }
 }
 
@@ -169,5 +221,53 @@ mod test {
 
         assert_eq!(ref_tokens, tokens);
         assert_eq!(lexer.pos, 0);
+    }
+
+    #[test]
+    fn return_not_neg_2() {
+        let code = b"int main(void) {
+        return ~(-2);
+        }";
+
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.get_tokens();
+
+        let ref_tokens = vec![
+            Token::Keyword(Keyword::Int),
+            Token::Identifier("main".to_string()),
+            Token::OpenParenthesis,
+            Token::Keyword(Keyword::Void),
+            Token::CloseParenthesis,
+            Token::OpenBrace,
+            Token::Keyword(Keyword::Return),
+            Token::UnaryOp(UnaryOp::BitwiseComplement),
+            Token::OpenParenthesis,
+            Token::UnaryOp(UnaryOp::Negation),
+            Token::Constant(2),
+            Token::CloseParenthesis,
+            Token::Semicolon,
+            Token::CloseBrace,
+        ];
+
+        assert_eq!(ref_tokens, tokens);
+        assert_eq!(lexer.pos, 0);
+    }
+
+    #[test]
+    fn negation_vs_decrement() {
+        let code_neg = b"-2";
+        let code_dec = b"--2";
+
+        let neg_tokens = Lexer::new(code_neg).get_tokens();
+        let dec_tokens = Lexer::new(code_dec).get_tokens();
+
+        assert_eq!(
+            neg_tokens,
+            vec![Token::UnaryOp(UnaryOp::Negation), Token::Constant(2)]
+        );
+        assert_eq!(
+            dec_tokens,
+            vec![Token::UnaryOp(UnaryOp::Decrement), Token::Constant(2)]
+        );
     }
 }
