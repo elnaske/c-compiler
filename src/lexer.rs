@@ -64,7 +64,7 @@ impl<'a> Lexer<'a> {
         let mut tokens = Vec::<Token>::new();
         loop {
             match self.next_token() {
-                Ok(token) if token == Token::Eof => break,
+                Ok(Token::Eof) => break,
                 Ok(token) => tokens.push(token),
                 Err(e) => {
                     e.print();
@@ -142,23 +142,18 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        loop {
-            match self.peek() {
-                Some(b' ' | b'\t' | b'\n' | b'\r') => self.advance(),
-                _ => break,
-            }
+        while let Some(b' ' | b'\t' | b'\n' | b'\r') = self.peek() {
+            self.advance();
         }
     }
 
     fn lex_identifier(&mut self) -> Token {
         let start = self.pos;
 
-        loop {
-            match self.peek() {
-                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'0'..=b'9') => self.advance(),
-                _ => break,
-            }
+        while let Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'0'..=b'9') = self.peek() {
+            self.advance();
         }
+
         if let Some(keyword) = Keyword::from_u8(&self.input[start..self.pos]) {
             Token::Keyword(keyword)
         } else {

@@ -30,6 +30,11 @@ pub struct TempId(usize);
 pub struct IRGenerator {
     next_var_id: usize,
 }
+impl Default for IRGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl IRGenerator {
     pub fn new() -> Self {
         IRGenerator { next_var_id: 0 }

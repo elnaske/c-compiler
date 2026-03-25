@@ -1,5 +1,7 @@
 // use std::path::PathBuf;
 
+use std::fmt;
+
 use crate::lexer::Token;
 
 pub struct CompilerError {
@@ -32,7 +34,7 @@ impl CompilerError {
             self.filename,
             self.row,
             self.col,
-            self.kind.to_string()
+            self.kind,
         );
         // TODO: align these two lines better
         eprintln!("{:>5} | {}", self.row, self.line_string);
@@ -48,18 +50,19 @@ pub enum ErrorKind {
     // CLIInvalidFlag { flag: String },
     // CLIMissingArg { flag: String, expected: String },
 }
-impl ErrorKind {
-    fn to_string(&self) -> String {
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCharacter => "Invalid character".to_string(),
-            Self::InvalidIntSuffix => "Invalid suffix on integer constant".to_string(),
-            Self::LeftoverTokens => "Remaining tokens after the end of program".to_string(),
+            Self::InvalidCharacter => write!(f, "Invalid character"),
+            Self::InvalidIntSuffix => write!(f, "Invalid suffix on integer constant"),
+            Self::LeftoverTokens => write!(f, "Remaining tokens after the end of program"),
             Self::Expected { expected, actual } => {
-                format!("Expected {:?}, found {:?}", expected, actual)
+                write!(f, "Expected {:?}, found {:?}", expected, actual)
             } // ErrorKind::CLIInvalidFlag { flag } => format!("Invalid compiler flag `{}`", flag),
               // ErrorKind::CLIMissingArg { flag, expected } => {
               //     format!("Expected {} after `{}`", expected, flag)
               // }
         }
+        
     }
 }

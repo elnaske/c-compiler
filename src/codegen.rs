@@ -1,5 +1,5 @@
 use crate::{ir::*, lexer::UnaryOp};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Debug, PartialEq)]
 pub struct AsmProgram {
@@ -25,15 +25,15 @@ enum AsmInstruction {
     AllocateStack(usize),
     Ret,
 }
-impl AsmInstruction {
-    fn to_string(&self) -> String {
+impl fmt::Display for AsmInstruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Mov { src, dst } => {
-                format!("movl {}, {}", src.to_string(), dst.to_string())
+                write!(f, "movl {}, {}", src, dst)
             }
-            Self::Unary { operator, operand } => format!("{} {}", operator.to_string(), operand.to_string()),
-            Self::AllocateStack(n_bytes) => format!("subq ${}, %rsp", n_bytes),
-            Self::Ret => "movq %rbp, %rsp\npopq %rbp\nret".to_string(),
+            Self::Unary { operator, operand } => write!(f, "{} {}", operator, operand),
+            Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
+            Self::Ret => write!(f, "movq %rbp, %rsp\npopq %rbp\nret"),
         }
     }
 }
@@ -45,13 +45,13 @@ enum AsmOperand {
     PseudoReg(TempId),
     Stack(usize),
 }
-impl AsmOperand {
-    fn to_string(&self) -> String {
+impl fmt::Display for AsmOperand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Imm(i) => format!("${}", i),
-            Self::Register(reg) => format!("%{}", reg.to_string()),
+            Self::Imm(i) => write!(f, "${}", i),
+            Self::Register(reg) => write!(f, "%{}", reg),
             Self::PseudoReg(_tmp) => unimplemented!(),
-            Self::Stack(offset) => format!("-{}(%rbp)", offset),
+            Self::Stack(offset) => write!(f, "-{}(%rbp)", offset),
         }
     }
 }
@@ -61,30 +61,35 @@ enum AsmUnaryOp {
     Neg,
     Not,
 }
-impl AsmUnaryOp {
-    fn to_string(&self) -> String {
+impl fmt::Display for AsmUnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Neg => "negl".to_string(),
-            Self::Not => "notl".to_string(),
+            Self::Neg => write!(f, "negl"),
+            Self::Not => write!(f, "notl"),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 enum AsmRegister {
-    EAX,
-    R10D,
+    Eax,
+    R10d,
 }
-impl AsmRegister {
-    fn to_string(&self) -> String {
+impl fmt::Display for AsmRegister {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EAX => "eax".to_string(),
-            Self::R10D => "r10d".to_string(),
+            Self::Eax => write!(f, "eax"),
+            Self::R10d => write!(f, "r10d"),
         }
     }
 }
 
 pub struct AssemblyGenerator {}
+impl Default for AssemblyGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl AssemblyGenerator {
     pub fn new() -> Self {
         AssemblyGenerator {}
@@ -147,10 +152,10 @@ impl AssemblyGenerator {
                 {
                     fixed.push(AsmInstruction::Mov {
                         src,
-                        dst: AsmOperand::Register(AsmRegister::R10D),
+                        dst: AsmOperand::Register(AsmRegister::R10d),
                     });
                     fixed.push(AsmInstruction::Mov {
-                        src: AsmOperand::Register(AsmRegister::R10D),
+                        src: AsmOperand::Register(AsmRegister::R10d),
                         dst,
                     });
                 }
@@ -181,7 +186,7 @@ impl AssemblyGenerator {
                 IRInstruction::Return(val) => {
                     instructions.push(AsmInstruction::Mov {
                         src: self.val_to_operand(val),
-                        dst: AsmOperand::Register(AsmRegister::EAX),
+                        dst: AsmOperand::Register(AsmRegister::Eax),
                     });
                     instructions.push(AsmInstruction::Ret);
                 }

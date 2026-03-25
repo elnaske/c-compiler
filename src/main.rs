@@ -65,7 +65,7 @@ impl Config {
     }
 }
 
-fn preprocess(infiles: &Vec<String>, outfile: &String) {
+fn preprocess(infiles: &[String], outfile: &str) {
     // TODO: multiple outfiles
     Command::new("gcc")
         .args(["-E", "-P", &infiles.join(" "), "-o", outfile])
@@ -103,7 +103,7 @@ fn compile(
     Ok(())
 }
 
-fn assemble_and_link(assembly_file: &String, outfile: &String) {
+fn assemble_and_link(assembly_file: &str, outfile: &str) {
     Command::new("gcc")
         .args([assembly_file, "-o", outfile])
         .output()
