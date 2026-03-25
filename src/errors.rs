@@ -51,10 +51,10 @@ pub enum ErrorKind {
 impl ErrorKind {
     fn to_string(&self) -> String {
         match self {
-            ErrorKind::InvalidCharacter => "Invalid character".to_string(),
-            ErrorKind::InvalidIntSuffix => "Invalid suffix on integer constant".to_string(),
-            ErrorKind::LeftoverTokens => "Remaining tokens after the end of program".to_string(),
-            ErrorKind::Expected { expected, actual } => {
+            Self::InvalidCharacter => "Invalid character".to_string(),
+            Self::InvalidIntSuffix => "Invalid suffix on integer constant".to_string(),
+            Self::LeftoverTokens => "Remaining tokens after the end of program".to_string(),
+            Self::Expected { expected, actual } => {
                 format!("Expected {:?}, found {:?}", expected, actual)
             } // ErrorKind::CLIInvalidFlag { flag } => format!("Invalid compiler flag `{}`", flag),
               // ErrorKind::CLIMissingArg { flag, expected } => {

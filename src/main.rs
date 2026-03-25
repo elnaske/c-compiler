@@ -90,7 +90,7 @@ fn compile(
             
             if cfg.last_stage >= CompilerStage::CodeGen {
                 let codegen = AssemblyGenerator::new();
-                let asm_program= codegen.translate(c_program);
+                let asm_program= codegen.ir_to_asm(ir_program);
                 let asm = codegen.generate_asm(asm_program);
 
                 if cfg.last_stage >= CompilerStage::CodeEmission {

@@ -3,29 +3,29 @@ use crate::parser::*;
 
 #[derive(Debug, PartialEq)]
 pub struct IRProgram {
-    function: IRFunction,
+    pub function: IRFunction,
 }
 
 #[derive(Debug, PartialEq)]
-struct IRFunction {
-    name: String,
-    instructions: Vec<IRInstruction>,
+pub struct IRFunction {
+    pub name: String,
+    pub instructions: Vec<IRInstruction>,
 }
 
 #[derive(Debug, PartialEq)]
-enum IRInstruction {
-    Return(Val),
-    Unary { op: UnaryOp, src: Val, dst: Val }, // TODO: separate UnaryOp enum for IR
+pub enum IRInstruction {
+    Return(IRVal),
+    Unary { op: UnaryOp, src: IRVal, dst: IRVal }, // TODO: separate UnaryOp enum for IR
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Val {
+pub enum IRVal {
     Constant(i32),
     Var(TempId),
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct TempId(usize);
+pub struct TempId(usize);
 
 pub struct IRGenerator {
     next_var_id: usize,
@@ -67,15 +67,15 @@ impl IRGenerator {
         instructions
     }
 
-    fn exp_to_instructions(&mut self, c_expression: CExpression) -> (Val, Vec<IRInstruction>) {
+    fn exp_to_instructions(&mut self, c_expression: CExpression) -> (IRVal, Vec<IRInstruction>) {
         let val;
         let mut instructions = Vec::<IRInstruction>::new();
 
         match c_expression {
-            CExpression::Constant(i) => val = Val::Constant(i),
+            CExpression::Constant(i) => val = IRVal::Constant(i),
             CExpression::Unary(op, inner_exp) => {
                 let (src, mut inner_instructions) = self.exp_to_instructions(*inner_exp);
-                let dst = Val::Var(self.create_temp_var());
+                let dst = IRVal::Var(self.create_temp_var());
 
                 val = dst.clone();
                 instructions.append(&mut inner_instructions);

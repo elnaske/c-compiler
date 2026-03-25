@@ -34,7 +34,7 @@ pub enum CStatement {
 impl fmt::Display for CStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            CStatement::Return(exp) => {
+            Self::Return(exp) => {
                 write!(f, "Return({})", exp)
             }
         }
@@ -50,8 +50,8 @@ pub enum CExpression {
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            CExpression::Constant(i) => write!(f, "Constant({})", i),
-            CExpression::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
+            Self::Constant(i) => write!(f, "Constant({})", i),
+            Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
         }
     }
 }
@@ -59,9 +59,9 @@ impl fmt::Display for CExpression {
 impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            UnaryOp::BitwiseComplement => write!(f, "~"),
-            UnaryOp::Negation => write!(f, "-"),
-            UnaryOp::Decrement => write!(f, "--"),
+            Self::BitwiseComplement => write!(f, "~"),
+            Self::Negation => write!(f, "-"),
+            Self::Decrement => write!(f, "--"),
         }
     }
 }
