@@ -86,7 +86,7 @@ fn compile(
         let c_program = Parser::new(tokens).parse_program()?;
 
         if cfg.last_stage >= CompilerStage::IR {
-            let ir_program = IRGenerator::new().c_to_ir(c_program.clone());
+            let ir_program = IRGenerator::new().c_to_ir(c_program);
             
             if cfg.last_stage >= CompilerStage::CodeGen {
                 let codegen = AssemblyGenerator::new();

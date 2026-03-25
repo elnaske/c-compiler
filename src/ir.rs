@@ -15,7 +15,7 @@ pub struct IRFunction {
 #[derive(Debug, PartialEq)]
 pub enum IRInstruction {
     Return(IRVal),
-    Unary { op: UnaryOp, src: IRVal, dst: IRVal }, // TODO: separate UnaryOp enum for IR
+    Unary { op: UnaryOp, src: IRVal, dst: IRVal },
 }
 
 #[derive(Debug, PartialEq, Clone)]
