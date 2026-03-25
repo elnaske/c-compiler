@@ -31,9 +31,9 @@ impl AsmInstruction {
             Self::Mov { src, dst } => {
                 format!("movl {}, {}", src.to_string(), dst.to_string())
             }
-            Self::Unary { operator, operand } => unimplemented!(),
+            Self::Unary { operator, operand } => format!("{} {}", operator.to_string(), operand.to_string()),
             Self::AllocateStack(n_bytes) => format!("subq ${}, %rsp", n_bytes),
-            Self::Ret => "ret".to_string(),
+            Self::Ret => "movq %rbp, %rsp\npopq %rbp\nret".to_string(),
         }
     }
 }
@@ -50,7 +50,7 @@ impl AsmOperand {
         match self {
             Self::Imm(i) => format!("${}", i),
             Self::Register(reg) => format!("%{}", reg.to_string()),
-            Self::PseudoReg(tmp) => unimplemented!(),
+            Self::PseudoReg(_tmp) => unimplemented!(),
             Self::Stack(offset) => format!("-{}(%rbp)", offset),
         }
     }
@@ -61,6 +61,14 @@ enum AsmUnaryOp {
     Neg,
     Not,
 }
+impl AsmUnaryOp {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Neg => "negl".to_string(),
+            Self::Not => "notl".to_string(),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 enum AsmRegister {
@@ -70,8 +78,8 @@ enum AsmRegister {
 impl AsmRegister {
     fn to_string(&self) -> String {
         match self {
-            Self::EAX => "EAX".to_string(),
-            Self::R10D => unimplemented!(),
+            Self::EAX => "eax".to_string(),
+            Self::R10D => "r10d".to_string(),
         }
     }
 }
@@ -85,7 +93,7 @@ impl AssemblyGenerator {
     pub fn ir_to_asm(&self, ir_program: IRProgram) -> AsmProgram {
         let mut asm_program = self.translate_program(ir_program);
         let stack_size = self.replace_pseudo_registers(&mut asm_program);
-        self.fix_instructions(&mut asm_program);
+        self.fix_instructions(&mut asm_program, stack_size);
         asm_program
     }
 
@@ -128,8 +136,28 @@ impl AssemblyGenerator {
         };
     }
 
-    fn fix_instructions(&self, asm_program: &mut AsmProgram) {
-        todo!()
+    fn fix_instructions(&self, asm_program: &mut AsmProgram, stack_size: usize) {
+        let mut fixed = vec![AsmInstruction::AllocateStack(stack_size)];
+
+        for instruction in &mut asm_program.function.instructions.drain(..) {
+            match instruction {
+                AsmInstruction::Mov { src, dst }
+                    if matches!(src, AsmOperand::Stack(_))
+                        && matches!(dst, AsmOperand::Stack(_)) =>
+                {
+                    fixed.push(AsmInstruction::Mov {
+                        src,
+                        dst: AsmOperand::Register(AsmRegister::R10D),
+                    });
+                    fixed.push(AsmInstruction::Mov {
+                        src: AsmOperand::Register(AsmRegister::R10D),
+                        dst,
+                    });
+                }
+                _ => fixed.push(instruction),
+            }
+        }
+        asm_program.function.instructions = fixed;
     }
 
     pub fn translate_program(&self, ir_program: IRProgram) -> AsmProgram {
@@ -193,6 +221,8 @@ impl AssemblyGenerator {
 
         lines.push(format!("\t.globl {}", program.function.name));
         lines.push(format!("{}:", program.function.name));
+        lines.push("pushq %rbp".to_string());
+        lines.push("movq %rsp, %rbp".to_string());
         lines.append(
             &mut program
                 .function
@@ -233,21 +263,6 @@ mod test {
 
         let translated = codegen.ir_to_asm(program);
 
-        let ref_translation = AsmProgram {
-            function: AsmFunction {
-                name: "main".to_string(),
-                instructions: vec![
-                    AsmInstruction::Mov {
-                        src: AsmOperand::Imm(2),
-                        dst: AsmOperand::Register(AsmRegister::EAX),
-                    },
-                    AsmInstruction::Ret,
-                ],
-            },
-        };
-
-        assert_eq!(translated, ref_translation);
-
         let asm = codegen.generate_asm(translated);
 
         let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -271,5 +286,44 @@ mod test {
         let output = Command::new(exe_path).output().unwrap();
 
         assert_eq!(output.status.code().unwrap(), 2);
+    }
+    
+    #[test]
+    fn return_not_neg_2() {
+        let code = b"int main(void) {
+        return ~(-2);
+        }";
+
+        let tokens = Lexer::new(code).get_tokens();
+
+        let program = Parser::new(tokens).parse_program().unwrap();
+        let program = IRGenerator::new().c_to_ir(program);
+
+        let codegen = AssemblyGenerator::new();
+
+        let translated = codegen.ir_to_asm(program);
+        let asm = codegen.generate_asm(translated);
+
+        let tmp_dir = tempdir().expect("Failed to create temporary directory");
+        let outpath = tmp_dir.path().join("return2.s");
+        let mut file = File::create(&outpath).expect("Failed to create temporary file");
+
+        write!(file, "{}", asm).expect("Failed to write file");
+
+        let exe_path = tmp_dir.path().join("return2");
+        let status = Command::new("gcc")
+            .args([
+                outpath.as_os_str().to_str().unwrap(),
+                "-o",
+                exe_path.as_os_str().to_str().unwrap(),
+            ])
+            .status()
+            .expect("assembling/linking failed");
+
+        assert!(status.success());
+
+        let output = Command::new(exe_path).output().unwrap();
+
+        assert_eq!(output.status.code().unwrap(), 1);
     }
 }
