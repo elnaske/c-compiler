@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::errors::{CompilerError, ErrorKind};
 
 #[derive(Debug, PartialEq)]
