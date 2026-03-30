@@ -1,4 +1,5 @@
-use crate::lexer::{Keyword, Token, UnaryOp};
+use crate::common::{Keyword, UnaryOp, BinaryOp};
+use crate::lexer::Token;
 use std::fmt::{self, Formatter};
 
 // TODO: factor out ASTs into separate files
@@ -45,6 +46,7 @@ impl fmt::Display for CStatement {
 pub enum CExpression {
     Constant(i32),
     Unary(UnaryOp, Box<CExpression>),
+    Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
 }
 
 impl fmt::Display for CExpression {
@@ -52,16 +54,7 @@ impl fmt::Display for CExpression {
         match self {
             Self::Constant(i) => write!(f, "Constant({})", i),
             Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
-        }
-    }
-}
-
-impl fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BitwiseComplement => write!(f, "~"),
-            Self::Negation => write!(f, "-"),
-            Self::Decrement => write!(f, "--"),
+            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, *exp1, *exp2),
         }
     }
 }

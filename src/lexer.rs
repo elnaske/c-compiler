@@ -1,4 +1,5 @@
 use crate::errors::{CompilerError, ErrorKind};
+use crate::common::{Keyword, UnaryOp, BinaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
@@ -6,6 +7,7 @@ pub enum Token {
     Constant(i32),
     Keyword(Keyword),
     UnaryOp(UnaryOp),
+    BinaryOp(BinaryOp),
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
@@ -14,30 +16,6 @@ pub enum Token {
     Eof,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Keyword {
-    Int,
-    Void,
-    Return,
-}
-
-impl Keyword {
-    fn from_u8(s: &[u8]) -> Option<Self> {
-        match s {
-            b"int" => Some(Keyword::Int),
-            b"void" => Some(Keyword::Void),
-            b"return" => Some(Keyword::Return),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum UnaryOp {
-    BitwiseComplement,
-    Negation,
-    Decrement,
-}
 
 pub struct Lexer<'a> {
     input: &'a [u8],
@@ -82,9 +60,9 @@ impl<'a> Lexer<'a> {
         match self.peek() {
             Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => Ok(self.lex_identifier()),
             Some(b'0'..=b'9') => self.lex_constant(),
-            Some(b'~') => {
+            Some(b'+') => {
                 self.advance();
-                Ok(Token::UnaryOp(UnaryOp::BitwiseComplement))
+                Ok(Token::BinaryOp(BinaryOp::Add))
             }
             Some(b'-') => {
                 self.advance();
@@ -95,6 +73,22 @@ impl<'a> Lexer<'a> {
                     }
                     _ => Ok(Token::UnaryOp(UnaryOp::Negation)),
                 }
+            }
+            Some(b'*') => {
+                self.advance();
+                Ok(Token::BinaryOp(BinaryOp::Mul))
+            }
+            Some(b'/') => {
+                self.advance();
+                Ok(Token::BinaryOp(BinaryOp::Div))
+            }
+            Some(b'%') => {
+                self.advance();
+                Ok(Token::BinaryOp(BinaryOp::Mod))
+            }
+            Some(b'~') => {
+                self.advance();
+                Ok(Token::UnaryOp(UnaryOp::BitwiseComplement))
             }
             Some(b'(') => {
                 self.advance();

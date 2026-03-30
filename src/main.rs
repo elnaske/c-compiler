@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::process::Command;
 
+pub mod common;
 pub mod lexer;
 use lexer::Lexer;
 pub mod parser;
@@ -11,7 +12,7 @@ pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
 pub mod ir;
-use ir::IRGenerator;
+use ir::IRGenerator; 
 
 #[derive(PartialEq, PartialOrd)]
 enum CompilerStage {

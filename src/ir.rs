@@ -1,4 +1,4 @@
-use crate::lexer::UnaryOp;
+use crate::common::UnaryOp;
 use crate::parser::*;
 
 #[derive(Debug, PartialEq)]
@@ -86,6 +86,7 @@ impl IRGenerator {
                 instructions.append(&mut inner_instructions);
                 instructions.push(IRInstruction::Unary { op, src, dst });
             }
+            CExpression::Binary(_, _, _) => todo!(),
         }
         (val, instructions)
     }

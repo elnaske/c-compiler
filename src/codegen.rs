@@ -1,4 +1,5 @@
-use crate::{ir::*, lexer::UnaryOp};
+use crate::common::UnaryOp;
+use crate::ir::*;
 use std::{collections::HashMap, fmt};
 
 #[derive(Debug, PartialEq)]
