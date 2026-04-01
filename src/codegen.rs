@@ -260,7 +260,7 @@ mod test {
         return 2;
         }";
 
-        let tokens = Lexer::new(code).get_tokens();
+        let tokens = Lexer::new(code, "foo.c".to_string()).get_tokens();
 
         let program = Parser::new(tokens).parse_program().unwrap();
         let program = IRGenerator::new().c_to_ir(program);
@@ -300,7 +300,7 @@ mod test {
         return ~(-2);
         }";
 
-        let tokens = Lexer::new(code).get_tokens();
+        let tokens = Lexer::new(code, "foo.c".to_string()).get_tokens();
 
         let program = Parser::new(tokens).parse_program().unwrap();
         let program = IRGenerator::new().c_to_ir(program);

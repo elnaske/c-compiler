@@ -170,7 +170,7 @@ impl Parser {
                 Some(Token::BinaryOp(op)) if op.precedence() >= min_precedence => {
                     let op = op.clone();
                     self.pos += 1;
-                    
+
                     let right = self.parse_expression(op.precedence() + 1)?;
                     left = CExpression::Binary(op, Box::new(left), Box::new(right));
 
@@ -224,7 +224,7 @@ mod test {
         return 2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -246,7 +246,7 @@ mod test {
         return -2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -271,7 +271,7 @@ mod test {
         return ~2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -296,7 +296,7 @@ mod test {
         return (~((-2)));
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);

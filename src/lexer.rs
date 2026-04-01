@@ -16,21 +16,18 @@ pub enum Token {
     Eof,
 }
 
-// TODO: lazy computation of row and column instead of storing
 pub struct Lexer<'a> {
     input: &'a [u8],
+    filename: String,
     pos: usize,
-    row: usize,
-    col: usize,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a [u8]) -> Self {
+    pub fn new(input: &'a [u8], filename: String) -> Self {
         Lexer {
             input,
+            filename,
             pos: 0,
-            row: 1,
-            col: 1,
         }
     }
 
@@ -111,13 +108,7 @@ impl<'a> Lexer<'a> {
                 Ok(Token::Semicolon)
             }
             None => Ok(Token::Eof),
-            _ => Err(CompilerError {
-                kind: ErrorKind::InvalidCharacter,
-                filename: "TODO.c".to_string(),
-                line_string: "TODO".to_string(),
-                row: self.row,
-                col: self.col,
-            }),
+            other => Err(CompilerError::new(ErrorKind::InvalidCharacter(other.unwrap()), self.filename.clone(), self.pos)),
         }
     }
 
@@ -126,12 +117,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self) {
-        if self.peek() == Some(b'\n') {
-            self.row += 1; // this doesn't work right; idk why
-            self.col = 1;
-        } else {
-            self.col += 1
-        }
         self.pos += 1;
     }
 
@@ -167,13 +152,7 @@ impl<'a> Lexer<'a> {
                 Some(b'0'..=b'9') => self.advance(),
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
                     // panic!("invalid suffix on integer constant")
-                    return Err(CompilerError {
-                        kind: ErrorKind::InvalidIntSuffix,
-                        filename: "TODO.c".to_string(),
-                        line_string: "TODO".to_string(),
-                        row: self.row,
-                        col: self.col,
-                    });
+                    return Err(CompilerError::new(ErrorKind::InvalidIntSuffix, self.filename.clone(), self.pos));
                 } // put this here to satisfy a test case, might change how this is handled in the future
                 _ => break,
             }
@@ -197,7 +176,7 @@ mod test {
         return 2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let ref_tokens = vec![
@@ -223,7 +202,7 @@ mod test {
         return ~(-2);
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let ref_tokens = vec![
@@ -252,8 +231,8 @@ mod test {
         let code_neg = b"-2";
         let code_dec = b"--2";
 
-        let neg_tokens = Lexer::new(code_neg).get_tokens();
-        let dec_tokens = Lexer::new(code_dec).get_tokens();
+        let neg_tokens = Lexer::new(code_neg, "foo.c".to_string()).get_tokens();
+        let dec_tokens = Lexer::new(code_dec, "foo.c".to_string()).get_tokens();
 
         assert_eq!(
             neg_tokens,

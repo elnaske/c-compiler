@@ -81,7 +81,8 @@ fn compile(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let code = fs::read_to_string(infile).expect("Failed to read file");
 
-    let tokens = Lexer::new(code.as_bytes()).get_tokens();
+    // TODO: see if there is a way to avoid cloning filename
+    let tokens = Lexer::new(code.as_bytes(), infile.clone()).get_tokens();
 
     if cfg.last_stage >= CompilerStage::Parser {
         let c_program = Parser::new(tokens).parse_program()?;

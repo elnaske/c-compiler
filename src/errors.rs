@@ -3,27 +3,37 @@
 use std::fmt;
 
 use crate::lexer::Token;
+    
+fn find_line_and_col(filename: &str, pos: usize) -> (usize, usize) {
+    unimplemented!()
+}
+
+fn get_full_line(line_num: usize) -> String {
+    unimplemented!()
+}
 
 pub struct CompilerError {
     pub kind: ErrorKind,
     pub filename: String,
     pub line_string: String,
-    pub row: usize,
+    pub line_num: usize,
     pub col: usize,
 }
 impl CompilerError {
     pub fn new(
         kind: ErrorKind,
         filename: String,
-        line_string: String,
-        row: usize,
-        col: usize,
+        pos: usize,
     ) -> Self {
+
+        let (line_num, col) = find_line_and_col(&filename, pos);
+        let line_string = get_full_line(line_num);
+
         CompilerError {
             kind,
             filename,
             line_string,
-            row,
+            line_num,
             col,
         }
     }
@@ -32,18 +42,18 @@ impl CompilerError {
         eprintln!(
             "{}:{}:{}: error: {}",
             self.filename,
-            self.row,
+            self.line_num,
             self.col,
             self.kind,
         );
         // TODO: align these two lines better
-        eprintln!("{:>5} | {}", self.row, self.line_string);
+        eprintln!("{:>5} | {}", self.line_num, self.line_string);
         eprintln!("{:>5} | {:>width$}", "", "^", width = self.col);
     }
 }
 
 pub enum ErrorKind {
-    InvalidCharacter,
+    InvalidCharacter(u8),
     InvalidIntSuffix,
     LeftoverTokens,
     Expected { expected: Token, actual: Token },
@@ -53,7 +63,7 @@ pub enum ErrorKind {
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCharacter => write!(f, "Invalid character"),
+            Self::InvalidCharacter(c) => write!(f, "Invalid character: `{}`", c),
             Self::InvalidIntSuffix => write!(f, "Invalid suffix on integer constant"),
             Self::LeftoverTokens => write!(f, "Remaining tokens after the end of program"),
             Self::Expected { expected, actual } => {
