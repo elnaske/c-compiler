@@ -1,5 +1,5 @@
+use crate::common::{BinaryOp, Keyword, UnaryOp};
 use crate::errors::{CompilerError, ErrorKind};
-use crate::common::{Keyword, UnaryOp, BinaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
@@ -16,7 +16,7 @@ pub enum Token {
     Eof,
 }
 
-
+// TODO: lazy computation of row and column instead of storing
 pub struct Lexer<'a> {
     input: &'a [u8],
     pos: usize,

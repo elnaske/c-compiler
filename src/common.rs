@@ -42,6 +42,17 @@ pub enum BinaryOp {
     Div,
     Mod,
 }
+impl BinaryOp {
+    pub fn precedence(&self) -> u32 {
+        match self {
+            Self::Add => 45,
+            Self::Sub => 45,
+            Self::Mul => 50,
+            Self::Div => 50,
+            Self::Mod => 50,
+        }
+    }
+}
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

@@ -1,4 +1,4 @@
-use crate::common::{Keyword, UnaryOp, BinaryOp};
+use crate::common::{BinaryOp, Keyword, UnaryOp};
 use crate::lexer::Token;
 use std::fmt::{self, Formatter};
 
@@ -44,17 +44,31 @@ impl fmt::Display for CStatement {
 
 #[derive(Debug, PartialEq)]
 pub enum CExpression {
-    Constant(i32),
-    Unary(UnaryOp, Box<CExpression>),
+    Factor(Box<CFactor>),
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
 }
-
 impl fmt::Display for CExpression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Factor(fac) => write!(f, "Factor({})", fac),
+            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, *exp1, *exp2),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CFactor {
+    Constant(i32),
+    Unary(UnaryOp, Box<CFactor>),
+    Expression(Box<CExpression>),
+}
+
+impl fmt::Display for CFactor {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Constant(i) => write!(f, "Constant({})", i),
             Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
-            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, *exp1, *exp2),
+            Self::Expression(exp) => write!(f, "Expression({})", *exp),
         }
     }
 }
@@ -66,10 +80,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser {
-            tokens,
-            pos: 0,
-        }
+        Parser { tokens, pos: 0 }
     }
 
     pub fn parse_program(&mut self) -> Result<CProgram, String> {
@@ -88,6 +99,10 @@ impl Parser {
         let token = self.tokens.get(self.pos);
         self.pos += 1;
         token
+    }
+
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.pos)
     }
 
     fn expect(&mut self, expected: Token) -> Result<(), String> {
@@ -122,7 +137,7 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<CStatement, String> {
         self.expect(Token::Keyword(Keyword::Return))?;
 
-        let expression = self.parse_expression()?;
+        let expression = self.parse_expression(0)?;
 
         self.expect(Token::Semicolon)?;
 
@@ -136,18 +151,62 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self) -> Result<CExpression, String> {
+    fn parse_expression(&mut self, min_precedence: u32) -> Result<CExpression, String> {
+        let mut left = CExpression::Factor(Box::new(self.parse_factor()?));
+        // while let Some(Token::BinaryOp(op)) = self.peek()
+        //     && op.precedence() >= min_precedence
+        // {
+        //     // take or peek???
+        //     let op = op.clone();
+        //     self.pos += 1;
+        //     let right = self.parse_expression(op.precedence() + 1)?;
+        //     left = CExpression::Binary(op, Box::new(left), Box::new(right));
+        // }
+
+        // TODO: refactor how operators how tokenized to make subtraction less of a pain
+        let mut next_token = self.peek();
+        loop {
+            match next_token {
+                Some(Token::BinaryOp(op)) if op.precedence() >= min_precedence => {
+                    let op = op.clone();
+                    self.pos += 1;
+                    
+                    let right = self.parse_expression(op.precedence() + 1)?;
+                    left = CExpression::Binary(op, Box::new(left), Box::new(right));
+
+                    next_token = self.peek();
+                }
+                Some(Token::UnaryOp(UnaryOp::Negation))
+                    if BinaryOp::Sub.precedence() >= min_precedence =>
+                {
+                    let op = BinaryOp::Sub;
+                    self.pos += 1;
+
+                    let right = self.parse_expression(op.precedence() + 1)?;
+                    left = CExpression::Binary(op, Box::new(left), Box::new(right));
+
+                    next_token = self.peek();
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        Ok(left)
+    }
+
+    fn parse_factor(&mut self) -> Result<CFactor, String> {
         match self.take_token() {
-            Some(Token::Constant(i)) => Ok(CExpression::Constant(*i)),
+            Some(Token::Constant(i)) => Ok(CFactor::Constant(*i)),
             Some(Token::UnaryOp(UnaryOp::Decrement)) => unimplemented!(),
-            Some(Token::UnaryOp(unop)) => Ok(CExpression::Unary(
-                unop.clone(),
-                Box::new(self.parse_expression()?),
-            )),
+            Some(Token::UnaryOp(unop)) => {
+                Ok(CFactor::Unary(unop.clone(), Box::new(self.parse_factor()?)))
+            }
             Some(Token::OpenParenthesis) => {
-                let inner_exp = self.parse_expression()?;
+                let inner_exp = self.parse_expression(0)?;
                 self.expect(Token::CloseParenthesis)?;
-                Ok(inner_exp)
+                Ok(CFactor::Expression(Box::new(inner_exp)))
             }
             other => Err(format!("Expected expression, found {:?}", other)),
         }
@@ -174,7 +233,7 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Constant(2)),
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Constant(2)))),
             },
         };
 
@@ -196,10 +255,10 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Unary(
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
                     UnaryOp::Negation,
-                    Box::new(CExpression::Constant(2)),
-                )),
+                    Box::new(CFactor::Constant(2)),
+                )))),
             },
         };
 
@@ -221,10 +280,10 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Unary(
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
                     UnaryOp::BitwiseComplement,
-                    Box::new(CExpression::Constant(2)),
-                )),
+                    Box::new(CFactor::Constant(2)),
+                )))),
             },
         };
 
@@ -246,13 +305,13 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Unary(
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
                     UnaryOp::BitwiseComplement,
-                    Box::new(CExpression::Unary(
+                    Box::new(CFactor::Unary(
                         UnaryOp::Negation,
-                        Box::new(CExpression::Constant(2)),
+                        Box::new(CFactor::Constant(2)),
                     )),
-                )),
+                )))),
             },
         };
 

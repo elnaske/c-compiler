@@ -77,16 +77,30 @@ impl IRGenerator {
         let mut instructions = Vec::<IRInstruction>::new();
 
         match c_expression {
-            CExpression::Constant(i) => val = IRVal::Constant(i),
-            CExpression::Unary(op, inner_exp) => {
-                let (src, mut inner_instructions) = self.exp_to_instructions(*inner_exp);
+            CExpression::Factor(f) => {
+                (val, instructions) = self.factor_to_instructions(*f);
+                todo!()
+            }
+            CExpression::Binary(_, _, _) => todo!(),
+        };
+        (val, instructions)
+    }
+
+    fn factor_to_instructions(&mut self, c_factor: CFactor) -> (IRVal, Vec<IRInstruction>) {
+        todo!();
+        let val;
+        let mut instructions = Vec::<IRInstruction>::new();
+        match c_factor {
+            CFactor::Constant(i) => val = IRVal::Constant(i),
+            CFactor::Unary(op, inner_exp) => {
+                let (src, mut inner_instructions) = self.factor_to_instructions(*inner_exp);
                 let dst = IRVal::Var(self.create_temp_var());
 
                 val = dst.clone();
                 instructions.append(&mut inner_instructions);
                 instructions.push(IRInstruction::Unary { op, src, dst });
             }
-            CExpression::Binary(_, _, _) => todo!(),
+            CFactor::Expression(exp) => todo!(),
         }
         (val, instructions)
     }
