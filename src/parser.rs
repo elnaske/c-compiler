@@ -293,7 +293,7 @@ mod test {
     #[test]
     fn return_not_neg_2() {
         let code = b"int main(void) {
-        return (~((-2)));
+        return ~(-2);
         }";
 
         let mut lexer = Lexer::new(code, "foo.c".to_string());
@@ -307,10 +307,12 @@ mod test {
                 name: "main".to_string(),
                 body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
                     UnaryOp::BitwiseComplement,
-                    Box::new(CFactor::Unary(
-                        UnaryOp::Negation,
-                        Box::new(CFactor::Constant(2)),
-                    )),
+                    Box::new(CFactor::Expression(Box::new(CExpression::Factor(
+                        Box::new(CFactor::Unary(
+                            UnaryOp::Negation,
+                            Box::new(CFactor::Constant(2)),
+                        )),
+                    )))),
                 )))),
             },
         };

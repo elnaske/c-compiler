@@ -1,4 +1,4 @@
-use crate::common::UnaryOp;
+use crate::common::{BinaryOp, UnaryOp};
 use crate::parser::*;
 
 #[derive(Debug, PartialEq)]
@@ -16,6 +16,7 @@ pub struct IRFunction {
 pub enum IRInstruction {
     Return(IRVal),
     Unary { op: UnaryOp, src: IRVal, dst: IRVal },
+    Binary {op: BinaryOp, src1: IRVal, src2: IRVal, dst: IRVal}
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -79,15 +80,22 @@ impl IRGenerator {
         match c_expression {
             CExpression::Factor(f) => {
                 (val, instructions) = self.factor_to_instructions(*f);
-                todo!()
             }
-            CExpression::Binary(_, _, _) => todo!(),
+            CExpression::Binary(op, exp1, exp2) => {
+                let (src1, mut ins1) = self.exp_to_instructions(*exp1);
+                let (src2, mut ins2) = self.exp_to_instructions(*exp2);
+                instructions.append(&mut ins1);
+                instructions.append(&mut ins2);
+                
+                let dst = IRVal::Var(self.create_temp_var());
+                val = dst.clone();
+                instructions.push(IRInstruction::Binary { op, src1, src2, dst });
+            },
         };
         (val, instructions)
     }
 
     fn factor_to_instructions(&mut self, c_factor: CFactor) -> (IRVal, Vec<IRInstruction>) {
-        todo!();
         let val;
         let mut instructions = Vec::<IRInstruction>::new();
         match c_factor {
@@ -100,7 +108,9 @@ impl IRGenerator {
                 instructions.append(&mut inner_instructions);
                 instructions.push(IRInstruction::Unary { op, src, dst });
             }
-            CFactor::Expression(exp) => todo!(),
+            CFactor::Expression(exp) => {
+                (val, instructions) = self.exp_to_instructions(*exp);
+            },
         }
         (val, instructions)
     }

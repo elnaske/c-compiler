@@ -202,6 +202,7 @@ impl AssemblyGenerator {
                         operand: dst,
                     });
                 }
+                IRInstruction::Binary { op, src1, src2, dst } => todo!()
             }
         }
         instructions
