@@ -1,4 +1,4 @@
-use crate::common::UnaryOp;
+use crate::common::{BinaryOp, UnaryOp};
 use crate::ir::*;
 use std::{collections::HashMap, fmt};
 
@@ -23,6 +23,13 @@ enum AsmInstruction {
         operator: AsmUnaryOp,
         operand: AsmOperand,
     },
+    Binary {
+        operator: AsmBinaryOp,
+        operand1: AsmOperand,
+        operand2: AsmOperand,
+    },
+    Idiv(AsmOperand),
+    Cdq,
     AllocateStack(usize),
     Ret,
 }
@@ -33,6 +40,13 @@ impl fmt::Display for AsmInstruction {
                 write!(f, "movl {}, {}", src, dst)
             }
             Self::Unary { operator, operand } => write!(f, "{} {}", operator, operand),
+            Self::Binary {
+                operator,
+                operand1,
+                operand2,
+            } => write!(f, "{} {}, {}", operator, operand1, operand2),
+            Self::Idiv(op) => write!(f, "idivl {}", op),
+            Self::Cdq => write!(f, "cdq"),
             Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
             Self::Ret => write!(f, "movq %rbp, %rsp\npopq %rbp\nret"),
         }
@@ -71,16 +85,36 @@ impl fmt::Display for AsmUnaryOp {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum AsmBinaryOp {
+    Add,
+    Sub,
+    Imul,
+}
+impl fmt::Display for AsmBinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Add => write!(f, "addl"),
+            Self::Sub => write!(f, "subl"),
+            Self::Imul => write!(f, "imull"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 enum AsmRegister {
     Eax,
+    Edx,
     R10d,
+    R11d,
 }
 impl fmt::Display for AsmRegister {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Eax => write!(f, "eax"),
+            Self::Edx => write!(f, "edx"),
             Self::R10d => write!(f, "r10d"),
+            Self::R11d => write!(f, "r11d"),
         }
     }
 }
@@ -117,6 +151,17 @@ impl AssemblyGenerator {
                     operator: _,
                     operand,
                 } => self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset),
+                AsmInstruction::Binary {
+                    operator: _,
+                    operand1,
+                    operand2,
+                } => {
+                    self.pseudo_to_stack(operand1, &mut curr_offset, &mut tmp_to_offset);
+                    self.pseudo_to_stack(operand2, &mut curr_offset, &mut tmp_to_offset);
+                }
+                AsmInstruction::Idiv(operand) => {
+                    self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset)
+                }
                 _ => (),
             }
         }
@@ -143,6 +188,7 @@ impl AssemblyGenerator {
     }
 
     fn fix_instructions(&self, asm_program: &mut AsmProgram, stack_size: usize) {
+        // TODO: think about fixing instructions in-place
         let mut fixed = vec![AsmInstruction::AllocateStack(stack_size)];
 
         for instruction in &mut asm_program.function.instructions.drain(..) {
@@ -151,6 +197,7 @@ impl AssemblyGenerator {
                     if matches!(src, AsmOperand::Stack(_))
                         && matches!(dst, AsmOperand::Stack(_)) =>
                 {
+                    // src and dst for mov can't both be memory addresses, use %r10d as an intermediate step
                     fixed.push(AsmInstruction::Mov {
                         src,
                         dst: AsmOperand::Register(AsmRegister::R10d),
@@ -159,6 +206,43 @@ impl AssemblyGenerator {
                         src: AsmOperand::Register(AsmRegister::R10d),
                         dst,
                     });
+                }
+                AsmInstruction::Binary {
+                    operator,
+                    operand1,
+                    operand2,
+                } => {
+                    match operator {
+                        AsmBinaryOp::Add | AsmBinaryOp::Sub if matches!(operand1, AsmOperand::Stack(_)) && matches!(operand2, AsmOperand::Stack(_)) => {
+                            // same as with mov, both operands can't be memory addresses
+                            fixed.push(AsmInstruction::Mov {
+                                src: operand1,
+                                dst: AsmOperand::Register(AsmRegister::R10d),
+                            });
+                            fixed.push(AsmInstruction::Binary {
+                                operator,
+                                operand1: AsmOperand::Register(AsmRegister::R10d),
+                                operand2,
+                            });
+                        }
+                        AsmBinaryOp::Imul if matches!(operand2, AsmOperand::Stack(_)) => {
+                            // destination can't be memory address
+                            fixed.push(AsmInstruction::Mov { src: operand2.clone(), dst: AsmOperand::Register(AsmRegister::R11d) });
+                            fixed.push(AsmInstruction::Binary { operator, operand1, operand2: AsmOperand::Register(AsmRegister::R11d) });
+                            fixed.push(AsmInstruction::Mov { src: AsmOperand::Register(AsmRegister::R11d), dst: operand2 });
+                        }
+                        _ => fixed.push(AsmInstruction::Binary { operator, operand1, operand2 }),
+                    }
+                }                 
+                AsmInstruction::Idiv(op) if matches!(op, AsmOperand::Imm(_)) => {
+                    // operand can't be an immediate value
+                    fixed.push(AsmInstruction::Mov {
+                        src: op,
+                        dst: AsmOperand::Register(AsmRegister::R10d),
+                    });
+                    fixed.push(AsmInstruction::Idiv(AsmOperand::Register(
+                        AsmRegister::R10d,
+                    )));
                 }
                 _ => fixed.push(instruction),
             }
@@ -202,7 +286,45 @@ impl AssemblyGenerator {
                         operand: dst,
                     });
                 }
-                IRInstruction::Binary { op, src1, src2, dst } => todo!()
+                IRInstruction::Binary {
+                    op,
+                    src1,
+                    src2,
+                    dst,
+                } => match op {
+                    BinaryOp::Div | BinaryOp::Mod => {
+                        instructions.push(AsmInstruction::Mov {
+                            src: self.val_to_operand(src1),
+                            dst: AsmOperand::Register(AsmRegister::Eax),
+                        });
+                        instructions.push(AsmInstruction::Cdq);
+                        instructions.push(AsmInstruction::Idiv(self.val_to_operand(src2)));
+
+                        let src_reg = match op {
+                            BinaryOp::Div => AsmRegister::Eax,
+                            BinaryOp::Mod => AsmRegister::Edx,
+                            _ => panic!(
+                                "This arm should be unreachable because op has to be one of the above. 100% Rust bug not mine."
+                            ),
+                        };
+                        instructions.push(AsmInstruction::Mov {
+                            src: AsmOperand::Register(src_reg),
+                            dst: self.val_to_operand(dst),
+                        });
+                    }
+                    _ => {
+                        let dst = self.val_to_operand(dst);
+                        instructions.push(AsmInstruction::Mov {
+                            src: self.val_to_operand(src1),
+                            dst: dst.clone(),
+                        });
+                        instructions.push(AsmInstruction::Binary {
+                            operator: self.translate_binop(op),
+                            operand1: self.val_to_operand(src2),
+                            operand2: dst.clone(),
+                        })
+                    }
+                },
             }
         }
         instructions
@@ -220,6 +342,15 @@ impl AssemblyGenerator {
             UnaryOp::BitwiseComplement => AsmUnaryOp::Not,
             UnaryOp::Negation => AsmUnaryOp::Neg,
             _ => unimplemented!(),
+        }
+    }
+
+    fn translate_binop(&self, op: BinaryOp) -> AsmBinaryOp {
+        match op {
+            BinaryOp::Add => AsmBinaryOp::Add,
+            BinaryOp::Sub => AsmBinaryOp::Sub,
+            BinaryOp::Mul => AsmBinaryOp::Imul,
+            BinaryOp::Div | BinaryOp::Mod => unimplemented!(), // correspond to AsmInstruction::Idiv and are handled separately
         }
     }
 
@@ -294,7 +425,7 @@ mod test {
 
         assert_eq!(output.status.code().unwrap(), 2);
     }
-    
+
     #[test]
     fn return_not_neg_2() {
         let code = b"int main(void) {
