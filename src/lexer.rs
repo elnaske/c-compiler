@@ -1,4 +1,4 @@
-use crate::common::{BinaryOp, Keyword, UnaryOp};
+use crate::common::{Keyword, Operator};
 use crate::errors::{CompilerError, ErrorKind};
 
 #[derive(Debug, PartialEq)]
@@ -6,8 +6,9 @@ pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
-    UnaryOp(UnaryOp),
-    BinaryOp(BinaryOp),
+    // UnaryOp(UnaryOp),
+    // BinaryOp(BinaryOp),
+    Operator(Operator),
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
@@ -59,33 +60,33 @@ impl<'a> Lexer<'a> {
             Some(b'0'..=b'9') => self.lex_constant(),
             Some(b'+') => {
                 self.advance();
-                Ok(Token::BinaryOp(BinaryOp::Add))
+                Ok(Token::Operator(Operator::Plus))
             }
             Some(b'-') => {
                 self.advance();
                 match self.peek() {
                     Some(b'-') => {
                         self.advance();
-                        Ok(Token::UnaryOp(UnaryOp::Decrement))
+                        Ok(Token::Operator(Operator::Decrement))
                     }
-                    _ => Ok(Token::UnaryOp(UnaryOp::Negation)),
+                    _ => Ok(Token::Operator(Operator::Minus)),
                 }
             }
             Some(b'*') => {
                 self.advance();
-                Ok(Token::BinaryOp(BinaryOp::Mul))
+                Ok(Token::Operator(Operator::Mul))
             }
             Some(b'/') => {
                 self.advance();
-                Ok(Token::BinaryOp(BinaryOp::Div))
+                Ok(Token::Operator(Operator::Div))
             }
             Some(b'%') => {
                 self.advance();
-                Ok(Token::BinaryOp(BinaryOp::Mod))
+                Ok(Token::Operator(Operator::Mod))
             }
             Some(b'~') => {
                 self.advance();
-                Ok(Token::UnaryOp(UnaryOp::BitwiseComplement))
+                Ok(Token::Operator(Operator::BitwiseNot))
             }
             Some(b'(') => {
                 self.advance();
@@ -213,9 +214,9 @@ mod test {
             Token::CloseParenthesis,
             Token::OpenBrace,
             Token::Keyword(Keyword::Return),
-            Token::UnaryOp(UnaryOp::BitwiseComplement),
+            Token::Operator(Operator::BitwiseNot),
             Token::OpenParenthesis,
-            Token::UnaryOp(UnaryOp::Negation),
+            Token::Operator(Operator::Minus),
             Token::Constant(2),
             Token::CloseParenthesis,
             Token::Semicolon,
@@ -236,11 +237,11 @@ mod test {
 
         assert_eq!(
             neg_tokens,
-            vec![Token::UnaryOp(UnaryOp::Negation), Token::Constant(2)]
+            vec![Token::Operator(Operator::Minus), Token::Constant(2)]
         );
         assert_eq!(
             dec_tokens,
-            vec![Token::UnaryOp(UnaryOp::Decrement), Token::Constant(2)]
+            vec![Token::Operator(Operator::Decrement), Token::Constant(2)]
         );
     }
 }

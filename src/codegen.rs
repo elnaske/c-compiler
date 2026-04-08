@@ -339,7 +339,7 @@ impl AssemblyGenerator {
 
     fn translate_unop(&self, op: UnaryOp) -> AsmUnaryOp {
         match op {
-            UnaryOp::BitwiseComplement => AsmUnaryOp::Not,
+            UnaryOp::BitwiseNot => AsmUnaryOp::Not,
             UnaryOp::Negation => AsmUnaryOp::Neg,
             _ => unimplemented!(),
         }

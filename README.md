@@ -9,7 +9,7 @@ A minimal compiler for a subset of C written in Rust.
   - [x] Parser
   - [x] Assembly generation
 - [x] Unary operators
-- [ ] Binary operators
+- [x] Binary operators
 - [ ] Logical and relational operators
 - [ ] Local variables
 - [ ] If statements and conditional expressions
