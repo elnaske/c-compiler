@@ -187,8 +187,8 @@ impl AssemblyGenerator {
         };
     }
 
+    // TODO: try using an iterator here
     fn fix_instructions(&self, asm_program: &mut AsmProgram, stack_size: usize) {
-        // TODO: think about fixing instructions in-place
         let mut fixed = vec![AsmInstruction::AllocateStack(stack_size)];
 
         for instruction in &mut asm_program.function.instructions.drain(..) {

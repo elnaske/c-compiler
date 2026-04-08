@@ -88,6 +88,66 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Ok(Token::Operator(Operator::BitwiseNot))
             }
+            Some(b'!') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'=') => {
+                        self.advance();
+                        Ok(Token::Operator(Operator::Neq))
+                    }
+                    _ => Ok(Token::Operator(Operator::LogicalNot))
+                }
+            }
+            Some(b'&') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'&') => {
+                        self.advance();
+                        Ok(Token::Operator(Operator::LogicalAnd))
+                    }
+                    _ => todo!("bitwise and")
+                }
+            }
+            Some(b'|') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'|') => {
+                        self.advance();
+                        Ok(Token::Operator(Operator::LogicalOr))
+                    }
+                    _ => todo!("bitwise or")
+                }
+            }
+            Some(b'=') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'=') => {
+                        self.advance();
+                        Ok(Token::Operator(Operator::Eq))
+                    }
+                    _ => todo!("assignment")
+                }
+            }
+            Some(b'<') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'=') => {
+                        self.advance();
+                        Ok(Token::Operator(Operator::Leq))
+                    }
+                    _ => Ok(Token::Operator(Operator::Less))
+                }
+            }
+            Some(b'>') => {
+                self.advance();
+                match self.peek() {
+                    Some(b'=') => {
+                        self.advance();
+                        Ok(Token::Operator(Operator::Geq))
+                    }
+                    _ => Ok(Token::Operator(Operator::Greater))
+                }
+            }
             Some(b'(') => {
                 self.advance();
                 Ok(Token::OpenParenthesis)

@@ -18,7 +18,7 @@ impl Keyword {
     }
 }
 
-
+// TODO: this is too much repeated code, go back to the way it was before
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
     BitwiseNot,
@@ -28,6 +28,15 @@ pub enum Operator {
     Div,
     Mod,
     Decrement,
+    LogicalNot,
+    LogicalAnd,
+    LogicalOr,
+    Eq,
+    Neq,
+    Less,
+    Greater,
+    Leq,
+    Geq,
 }
 impl Operator {
     pub fn is_unary(&self) -> bool {
@@ -35,6 +44,9 @@ impl Operator {
     }
     pub fn is_binary(&self) -> bool {
         self.to_binop().is_some()
+    }
+    pub fn is_logical(&self) -> bool {
+        self.to_logop().is_some()
     }
     pub fn precedence(&self) -> u32 {
         match self.to_binop() {
@@ -60,6 +72,20 @@ impl Operator {
             _ => None
         }
     }
+    pub fn to_logop(&self) -> Option<LogicalOp> {
+        match self {
+            Self::LogicalNot => Some(LogicalOp::Not),
+            Self::LogicalAnd => Some(LogicalOp::And),
+            Self::LogicalOr => Some(LogicalOp::Or),
+            Self::Eq => Some(LogicalOp::Eq),
+            Self::Neq => Some(LogicalOp::Neq),
+            Self::Less => Some(LogicalOp::Less),
+            Self::Greater => Some(LogicalOp::Greater),
+            Self::Leq => Some(LogicalOp::Leq),
+            Self::Geq => Some(LogicalOp::Geq),
+            _ => None
+        }
+    }
 }
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -71,6 +97,15 @@ impl fmt::Display for Operator {
             Self::Div => write!(f, "/"),
             Self::Mod => write!(f, "%"),
             Self::Decrement => write!(f, "--"),
+            Self::LogicalNot => write!(f, "!"),
+            Self::LogicalAnd => write!(f, "&&"),
+            Self::LogicalOr => write!(f, "||"),
+            Self::Eq => write!(f, "=="),
+            Self::Neq => write!(f, "!="),
+            Self::Less => write!(f, "<"),
+            Self::Greater => write!(f, ">"),
+            Self::Leq => write!(f, "<="),
+            Self::Geq => write!(f, ">="),
         }
     }
 }
@@ -118,6 +153,34 @@ impl fmt::Display for BinaryOp {
             Self::Mul => write!(f, "*"),
             Self::Div => write!(f, "/"),
             Self::Mod => write!(f, "%"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum LogicalOp {
+    Not,
+    And,
+    Or,
+    Eq,
+    Neq,
+    Less,
+    Greater,
+    Leq,
+    Geq,
+}
+impl fmt::Display for LogicalOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Not => write!(f, "!"),
+            Self::And => write!(f, "&&"),
+            Self::Or => write!(f, "||"),
+            Self::Eq => write!(f, "=="),
+            Self::Neq => write!(f, "!="),
+            Self::Less => write!(f, "<"),
+            Self::Greater => write!(f, ">"),
+            Self::Leq => write!(f, "<="),
+            Self::Geq => write!(f, ">="),
         }
     }
 }
