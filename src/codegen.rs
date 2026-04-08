@@ -351,6 +351,7 @@ impl AssemblyGenerator {
             BinaryOp::Sub => AsmBinaryOp::Sub,
             BinaryOp::Mul => AsmBinaryOp::Imul,
             BinaryOp::Div | BinaryOp::Mod => unimplemented!(), // correspond to AsmInstruction::Idiv and are handled separately
+            _ => todo!("logical ops")
         }
     }
 
