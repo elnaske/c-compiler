@@ -1,4 +1,4 @@
-use crate::common::{BinaryOp, Keyword, UnaryOp};
+use crate::common::{Keyword, Operator, UnaryOp, BinaryOp};
 use crate::lexer::Token;
 use std::fmt::{self, Formatter};
 
@@ -153,44 +153,14 @@ impl Parser {
 
     fn parse_expression(&mut self, min_precedence: u32) -> Result<CExpression, String> {
         let mut left = CExpression::Factor(Box::new(self.parse_factor()?));
-        // while let Some(Token::BinaryOp(op)) = self.peek()
-        //     && op.precedence() >= min_precedence
-        // {
-        //     // take or peek???
-        //     let op = op.clone();
-        //     self.pos += 1;
-        //     let right = self.parse_expression(op.precedence() + 1)?;
-        //     left = CExpression::Binary(op, Box::new(left), Box::new(right));
-        // }
-
-        // TODO: refactor how operators how tokenized to make subtraction less of a pain
-        let mut next_token = self.peek();
-        loop {
-            match next_token {
-                Some(Token::BinaryOp(op)) if op.precedence() >= min_precedence => {
-                    let op = op.clone();
-                    self.pos += 1;
-
-                    let right = self.parse_expression(op.precedence() + 1)?;
-                    left = CExpression::Binary(op, Box::new(left), Box::new(right));
-
-                    next_token = self.peek();
-                }
-                Some(Token::UnaryOp(UnaryOp::Negation))
-                    if BinaryOp::Sub.precedence() >= min_precedence =>
-                {
-                    let op = BinaryOp::Sub;
-                    self.pos += 1;
-
-                    let right = self.parse_expression(op.precedence() + 1)?;
-                    left = CExpression::Binary(op, Box::new(left), Box::new(right));
-
-                    next_token = self.peek();
-                }
-                _ => {
-                    break;
-                }
-            }
+        while let Some(Token::Operator(op)) = self.peek()
+            && op.is_binary()
+            && op.precedence() >= min_precedence
+        {
+            let op = op.to_binop().unwrap();
+            self.pos += 1;
+            let right = self.parse_expression(op.precedence() + 1)?;
+            left = CExpression::Binary(op, Box::new(left), Box::new(right));
         }
 
         Ok(left)
@@ -199,9 +169,10 @@ impl Parser {
     fn parse_factor(&mut self) -> Result<CFactor, String> {
         match self.take_token() {
             Some(Token::Constant(i)) => Ok(CFactor::Constant(*i)),
-            Some(Token::UnaryOp(UnaryOp::Decrement)) => unimplemented!(),
-            Some(Token::UnaryOp(unop)) => {
-                Ok(CFactor::Unary(unop.clone(), Box::new(self.parse_factor()?)))
+            Some(Token::Operator(Operator::Decrement)) => unimplemented!(),
+            Some(Token::Operator(op)) if op.is_unary() => {
+                // Not a big fan of how this is handled rn
+                Ok(CFactor::Unary(op.to_unop().unwrap(), Box::new(self.parse_factor()?)))
             }
             Some(Token::OpenParenthesis) => {
                 let inner_exp = self.parse_expression(0)?;
@@ -281,7 +252,7 @@ mod test {
             function: CFunction {
                 name: "main".to_string(),
                 body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
-                    UnaryOp::BitwiseComplement,
+                    UnaryOp::BitwiseNot,
                     Box::new(CFactor::Constant(2)),
                 )))),
             },
@@ -306,7 +277,7 @@ mod test {
             function: CFunction {
                 name: "main".to_string(),
                 body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
-                    UnaryOp::BitwiseComplement,
+                    UnaryOp::BitwiseNot,
                     Box::new(CFactor::Expression(Box::new(CExpression::Factor(
                         Box::new(CFactor::Unary(
                             UnaryOp::Negation,
