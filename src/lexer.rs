@@ -1,3 +1,4 @@
+use crate::common::{Keyword, Operator};
 use crate::errors::{CompilerError, ErrorKind};
 
 #[derive(Debug, PartialEq)]
@@ -5,7 +6,9 @@ pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
-    UnaryOp(UnaryOp),
+    // UnaryOp(UnaryOp),
+    // BinaryOp(BinaryOp),
+    Operator(Operator),
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
@@ -14,45 +17,18 @@ pub enum Token {
     Eof,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Keyword {
-    Int,
-    Void,
-    Return,
-}
-
-impl Keyword {
-    fn from_u8(s: &[u8]) -> Option<Self> {
-        match s {
-            b"int" => Some(Keyword::Int),
-            b"void" => Some(Keyword::Void),
-            b"return" => Some(Keyword::Return),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum UnaryOp {
-    BitwiseComplement,
-    Negation,
-    Decrement,
-}
-
 pub struct Lexer<'a> {
     input: &'a [u8],
+    filename: String,
     pos: usize,
-    row: usize,
-    col: usize,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a [u8]) -> Self {
+    pub fn new(input: &'a [u8], filename: String) -> Self {
         Lexer {
             input,
+            filename,
             pos: 0,
-            row: 1,
-            col: 1,
         }
     }
 
@@ -82,19 +58,35 @@ impl<'a> Lexer<'a> {
         match self.peek() {
             Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => Ok(self.lex_identifier()),
             Some(b'0'..=b'9') => self.lex_constant(),
-            Some(b'~') => {
+            Some(b'+') => {
                 self.advance();
-                Ok(Token::UnaryOp(UnaryOp::BitwiseComplement))
+                Ok(Token::Operator(Operator::Plus))
             }
             Some(b'-') => {
                 self.advance();
                 match self.peek() {
                     Some(b'-') => {
                         self.advance();
-                        Ok(Token::UnaryOp(UnaryOp::Decrement))
+                        Ok(Token::Operator(Operator::Decrement))
                     }
-                    _ => Ok(Token::UnaryOp(UnaryOp::Negation)),
+                    _ => Ok(Token::Operator(Operator::Minus)),
                 }
+            }
+            Some(b'*') => {
+                self.advance();
+                Ok(Token::Operator(Operator::Mul))
+            }
+            Some(b'/') => {
+                self.advance();
+                Ok(Token::Operator(Operator::Div))
+            }
+            Some(b'%') => {
+                self.advance();
+                Ok(Token::Operator(Operator::Mod))
+            }
+            Some(b'~') => {
+                self.advance();
+                Ok(Token::Operator(Operator::BitwiseNot))
             }
             Some(b'(') => {
                 self.advance();
@@ -117,13 +109,7 @@ impl<'a> Lexer<'a> {
                 Ok(Token::Semicolon)
             }
             None => Ok(Token::Eof),
-            _ => Err(CompilerError {
-                kind: ErrorKind::InvalidCharacter,
-                filename: "TODO.c".to_string(),
-                line_string: "TODO".to_string(),
-                row: self.row,
-                col: self.col,
-            }),
+            other => Err(CompilerError::new(ErrorKind::InvalidCharacter(other.unwrap()), self.filename.clone(), self.pos)),
         }
     }
 
@@ -132,12 +118,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self) {
-        if self.peek() == Some(b'\n') {
-            self.row += 1; // this doesn't work right; idk why
-            self.col = 1;
-        } else {
-            self.col += 1
-        }
         self.pos += 1;
     }
 
@@ -173,13 +153,7 @@ impl<'a> Lexer<'a> {
                 Some(b'0'..=b'9') => self.advance(),
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
                     // panic!("invalid suffix on integer constant")
-                    return Err(CompilerError {
-                        kind: ErrorKind::InvalidIntSuffix,
-                        filename: "TODO.c".to_string(),
-                        line_string: "TODO".to_string(),
-                        row: self.row,
-                        col: self.col,
-                    });
+                    return Err(CompilerError::new(ErrorKind::InvalidIntSuffix, self.filename.clone(), self.pos));
                 } // put this here to satisfy a test case, might change how this is handled in the future
                 _ => break,
             }
@@ -203,7 +177,7 @@ mod test {
         return 2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let ref_tokens = vec![
@@ -229,7 +203,7 @@ mod test {
         return ~(-2);
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let ref_tokens = vec![
@@ -240,9 +214,9 @@ mod test {
             Token::CloseParenthesis,
             Token::OpenBrace,
             Token::Keyword(Keyword::Return),
-            Token::UnaryOp(UnaryOp::BitwiseComplement),
+            Token::Operator(Operator::BitwiseNot),
             Token::OpenParenthesis,
-            Token::UnaryOp(UnaryOp::Negation),
+            Token::Operator(Operator::Minus),
             Token::Constant(2),
             Token::CloseParenthesis,
             Token::Semicolon,
@@ -258,16 +232,16 @@ mod test {
         let code_neg = b"-2";
         let code_dec = b"--2";
 
-        let neg_tokens = Lexer::new(code_neg).get_tokens();
-        let dec_tokens = Lexer::new(code_dec).get_tokens();
+        let neg_tokens = Lexer::new(code_neg, "foo.c".to_string()).get_tokens();
+        let dec_tokens = Lexer::new(code_dec, "foo.c".to_string()).get_tokens();
 
         assert_eq!(
             neg_tokens,
-            vec![Token::UnaryOp(UnaryOp::Negation), Token::Constant(2)]
+            vec![Token::Operator(Operator::Minus), Token::Constant(2)]
         );
         assert_eq!(
             dec_tokens,
-            vec![Token::UnaryOp(UnaryOp::Decrement), Token::Constant(2)]
+            vec![Token::Operator(Operator::Decrement), Token::Constant(2)]
         );
     }
 }

@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::process::Command;
 
+pub mod common;
 pub mod lexer;
 use lexer::Lexer;
 pub mod parser;
@@ -11,7 +12,7 @@ pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
 pub mod ir;
-use ir::IRGenerator;
+use ir::IRGenerator; 
 
 #[derive(PartialEq, PartialOrd)]
 enum CompilerStage {
@@ -80,7 +81,8 @@ fn compile(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let code = fs::read_to_string(infile).expect("Failed to read file");
 
-    let tokens = Lexer::new(code.as_bytes()).get_tokens();
+    // TODO: see if there is a way to avoid cloning filename
+    let tokens = Lexer::new(code.as_bytes(), infile.clone()).get_tokens();
 
     if cfg.last_stage >= CompilerStage::Parser {
         let c_program = Parser::new(tokens).parse_program()?;

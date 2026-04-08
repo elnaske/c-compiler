@@ -8,8 +8,8 @@ A minimal compiler for a subset of C written in Rust.
   - [x] Lexer
   - [x] Parser
   - [x] Assembly generation
-- [ ] Unary operators
-- [ ] Binary operators
+- [x] Unary operators
+- [x] Binary operators
 - [ ] Logical and relational operators
 - [ ] Local variables
 - [ ] If statements and conditional expressions

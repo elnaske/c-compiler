@@ -1,4 +1,5 @@
-use crate::lexer::{Keyword, Token, UnaryOp};
+use crate::common::{Keyword, Operator, UnaryOp, BinaryOp};
+use crate::lexer::Token;
 use std::fmt::{self, Formatter};
 
 // TODO: factor out ASTs into separate files
@@ -43,25 +44,31 @@ impl fmt::Display for CStatement {
 
 #[derive(Debug, PartialEq)]
 pub enum CExpression {
-    Constant(i32),
-    Unary(UnaryOp, Box<CExpression>),
+    Factor(Box<CFactor>),
+    Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
 }
-
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Constant(i) => write!(f, "Constant({})", i),
-            Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
+            Self::Factor(fac) => write!(f, "Factor({})", fac),
+            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, *exp1, *exp2),
         }
     }
 }
 
-impl fmt::Display for UnaryOp {
+#[derive(Debug, PartialEq)]
+pub enum CFactor {
+    Constant(i32),
+    Unary(UnaryOp, Box<CFactor>),
+    Expression(Box<CExpression>),
+}
+
+impl fmt::Display for CFactor {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BitwiseComplement => write!(f, "~"),
-            Self::Negation => write!(f, "-"),
-            Self::Decrement => write!(f, "--"),
+            Self::Constant(i) => write!(f, "Constant({})", i),
+            Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
+            Self::Expression(exp) => write!(f, "Expression({})", *exp),
         }
     }
 }
@@ -73,10 +80,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser {
-            tokens,
-            pos: 0,
-        }
+        Parser { tokens, pos: 0 }
     }
 
     pub fn parse_program(&mut self) -> Result<CProgram, String> {
@@ -95,6 +99,10 @@ impl Parser {
         let token = self.tokens.get(self.pos);
         self.pos += 1;
         token
+    }
+
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.pos)
     }
 
     fn expect(&mut self, expected: Token) -> Result<(), String> {
@@ -129,7 +137,7 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<CStatement, String> {
         self.expect(Token::Keyword(Keyword::Return))?;
 
-        let expression = self.parse_expression()?;
+        let expression = self.parse_expression(0)?;
 
         self.expect(Token::Semicolon)?;
 
@@ -143,18 +151,33 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self) -> Result<CExpression, String> {
+    fn parse_expression(&mut self, min_precedence: u32) -> Result<CExpression, String> {
+        let mut left = CExpression::Factor(Box::new(self.parse_factor()?));
+        while let Some(Token::Operator(op)) = self.peek()
+            && op.is_binary()
+            && op.precedence() >= min_precedence
+        {
+            let op = op.to_binop().unwrap();
+            self.pos += 1;
+            let right = self.parse_expression(op.precedence() + 1)?;
+            left = CExpression::Binary(op, Box::new(left), Box::new(right));
+        }
+
+        Ok(left)
+    }
+
+    fn parse_factor(&mut self) -> Result<CFactor, String> {
         match self.take_token() {
-            Some(Token::Constant(i)) => Ok(CExpression::Constant(*i)),
-            Some(Token::UnaryOp(UnaryOp::Decrement)) => unimplemented!(),
-            Some(Token::UnaryOp(unop)) => Ok(CExpression::Unary(
-                unop.clone(),
-                Box::new(self.parse_expression()?),
-            )),
+            Some(Token::Constant(i)) => Ok(CFactor::Constant(*i)),
+            Some(Token::Operator(Operator::Decrement)) => unimplemented!(),
+            Some(Token::Operator(op)) if op.is_unary() => {
+                // Not a big fan of how this is handled rn
+                Ok(CFactor::Unary(op.to_unop().unwrap(), Box::new(self.parse_factor()?)))
+            }
             Some(Token::OpenParenthesis) => {
-                let inner_exp = self.parse_expression()?;
+                let inner_exp = self.parse_expression(0)?;
                 self.expect(Token::CloseParenthesis)?;
-                Ok(inner_exp)
+                Ok(CFactor::Expression(Box::new(inner_exp)))
             }
             other => Err(format!("Expected expression, found {:?}", other)),
         }
@@ -172,7 +195,7 @@ mod test {
         return 2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -181,7 +204,7 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Constant(2)),
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Constant(2)))),
             },
         };
 
@@ -194,7 +217,7 @@ mod test {
         return -2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -203,10 +226,10 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Unary(
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
                     UnaryOp::Negation,
-                    Box::new(CExpression::Constant(2)),
-                )),
+                    Box::new(CFactor::Constant(2)),
+                )))),
             },
         };
 
@@ -219,7 +242,7 @@ mod test {
         return ~2;
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -228,10 +251,10 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Unary(
-                    UnaryOp::BitwiseComplement,
-                    Box::new(CExpression::Constant(2)),
-                )),
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
+                    UnaryOp::BitwiseNot,
+                    Box::new(CFactor::Constant(2)),
+                )))),
             },
         };
 
@@ -241,10 +264,10 @@ mod test {
     #[test]
     fn return_not_neg_2() {
         let code = b"int main(void) {
-        return (~((-2)));
+        return ~(-2);
         }";
 
-        let mut lexer = Lexer::new(code);
+        let mut lexer = Lexer::new(code, "foo.c".to_string());
         let tokens = lexer.get_tokens();
 
         let mut parser = Parser::new(tokens);
@@ -253,13 +276,15 @@ mod test {
         let ref_program = CProgram {
             function: CFunction {
                 name: "main".to_string(),
-                body: CStatement::Return(CExpression::Unary(
-                    UnaryOp::BitwiseComplement,
-                    Box::new(CExpression::Unary(
-                        UnaryOp::Negation,
-                        Box::new(CExpression::Constant(2)),
-                    )),
-                )),
+                body: CStatement::Return(CExpression::Factor(Box::new(CFactor::Unary(
+                    UnaryOp::BitwiseNot,
+                    Box::new(CFactor::Expression(Box::new(CExpression::Factor(
+                        Box::new(CFactor::Unary(
+                            UnaryOp::Negation,
+                            Box::new(CFactor::Constant(2)),
+                        )),
+                    )))),
+                )))),
             },
         };
 
