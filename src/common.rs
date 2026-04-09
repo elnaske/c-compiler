@@ -175,31 +175,3 @@ impl fmt::Display for BinaryOp {
         }
     }
 }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub enum LogicalOp {
-//     Not,
-//     And,
-//     Or,
-//     Eq,
-//     Neq,
-//     Less,
-//     Greater,
-//     Leq,
-//     Geq,
-// }
-// impl fmt::Display for LogicalOp {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Self::Not => write!(f, "!"),
-//             Self::And => write!(f, "&&"),
-//             Self::Or => write!(f, "||"),
-//             Self::Eq => write!(f, "=="),
-//             Self::Neq => write!(f, "!="),
-//             Self::Less => write!(f, "<"),
-//             Self::Greater => write!(f, ">"),
-//             Self::Leq => write!(f, "<="),
-//             Self::Geq => write!(f, ">="),
-//         }
-//     }
-// }
