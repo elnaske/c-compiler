@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::common::{BinaryOp, UnaryOp};
 use crate::parser::*;
 
@@ -16,20 +18,34 @@ pub struct IRFunction {
 pub enum IRInstruction {
     Return(IRVal),
     Unary { op: UnaryOp, src: IRVal, dst: IRVal },
-    Binary {op: BinaryOp, src1: IRVal, src2: IRVal, dst: IRVal}
+    Binary { op: BinaryOp, src1: IRVal, src2: IRVal, dst: IRVal },
+    Copy { src: IRVal, dst: IRVal },
+    Jump(Label),
+    JumpIfZero { condition: IRVal, target: Label },
+    JumpIfNotZero { condition: IRVal, target: Label },
+    Label(Label),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum IRVal {
     Constant(i32),
     Var(TempId),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct TempId(usize);
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct TempId(u32);
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct Label(u32);
+impl fmt::Display for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "label_{}", self.0)
+    }
+}
 
 pub struct IRGenerator {
-    next_var_id: usize,
+    next_var_id: u32,
+    next_label_id: u32,
 }
 impl Default for IRGenerator {
     fn default() -> Self {
@@ -38,13 +54,19 @@ impl Default for IRGenerator {
 }
 impl IRGenerator {
     pub fn new() -> Self {
-        IRGenerator { next_var_id: 0 }
+        IRGenerator { next_var_id: 0, next_label_id: 0 }
     }
 
     fn create_temp_var(&mut self) -> TempId {
         let id = self.next_var_id;
         self.next_var_id += 1;
         TempId(id)
+    }
+
+    fn create_jump_label(&mut self) -> Label {
+        let id = self.next_label_id;
+        self.next_label_id += 1;
+        Label(id)
     }
 
     pub fn c_to_ir(&mut self, c_program: CProgram) -> IRProgram {
@@ -84,12 +106,53 @@ impl IRGenerator {
             CExpression::Binary(op, exp1, exp2) => {
                 let (src1, mut ins1) = self.exp_to_instructions(*exp1);
                 let (src2, mut ins2) = self.exp_to_instructions(*exp2);
-                instructions.append(&mut ins1);
-                instructions.append(&mut ins2);
-                
-                let dst = IRVal::Var(self.create_temp_var());
-                val = dst.clone();
-                instructions.push(IRInstruction::Binary { op, src1, src2, dst });
+
+
+                match op {
+                    BinaryOp::LogicalAnd => {
+                        let dst = IRVal::Var(self.create_temp_var());
+                        let false_label = self.create_jump_label();
+                        let end_label = self.create_jump_label();
+                        
+                        instructions.append(&mut ins1);
+                        instructions.push(IRInstruction::JumpIfZero { condition: src1, target: false_label });
+                        instructions.append(&mut ins2);
+                        instructions.push(IRInstruction::JumpIfZero { condition: src2, target: false_label });
+                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(1), dst });
+                        instructions.push(IRInstruction::Jump(end_label));
+                        instructions.push(IRInstruction::Label(false_label));
+                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(0), dst });
+                        instructions.push(IRInstruction::Label(end_label));
+                        
+                        val = dst;
+                    }
+                    BinaryOp::LogicalOr => {
+                        let dst = IRVal::Var(self.create_temp_var());
+                        let true_label = self.create_jump_label();
+                        let end_label = self.create_jump_label();
+                        
+                        instructions.append(&mut ins1);
+                        instructions.push(IRInstruction::JumpIfNotZero { condition: src1, target: true_label });
+                        instructions.append(&mut ins2);
+                        instructions.push(IRInstruction::JumpIfNotZero { condition: src2, target: true_label });
+                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(0), dst });
+                        instructions.push(IRInstruction::Jump(end_label));
+                        instructions.push(IRInstruction::Label(true_label));
+                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(1), dst });
+                        instructions.push(IRInstruction::Label(end_label));
+                        
+                        val = dst;
+                    }
+                    _ => {
+                        instructions.append(&mut ins1);
+                        instructions.append(&mut ins2);
+                        
+                        let dst = IRVal::Var(self.create_temp_var());
+                        instructions.push(IRInstruction::Binary { op, src1, src2, dst });
+                        
+                        val = dst;
+                    }
+                }
             },
         };
         (val, instructions)

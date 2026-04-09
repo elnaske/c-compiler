@@ -129,7 +129,7 @@ fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     if cfg.last_stage >= CompilerStage::CodeEmission {
         assemble_and_link(&assembly_output, &output);
-        fs::remove_file(assembly_output).expect("failed to remove assembly file");
+        // fs::remove_file(assembly_output).expect("failed to remove assembly file");
     }
     Ok(())
 }

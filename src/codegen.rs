@@ -28,8 +28,19 @@ enum AsmInstruction {
         operand1: AsmOperand,
         operand2: AsmOperand,
     },
+    Cmp(AsmOperand, AsmOperand),
     Idiv(AsmOperand),
     Cdq,
+    Jmp(Label),
+    JmpCC {
+        cond: AsmCondCode,
+        target: Label,
+    },
+    SetCC {
+        cond: AsmCondCode,
+        op: AsmOperand,
+    },
+    Label(Label),
     AllocateStack(usize),
     Ret,
 }
@@ -45,8 +56,18 @@ impl fmt::Display for AsmInstruction {
                 operand1,
                 operand2,
             } => write!(f, "{} {}, {}", operator, operand1, operand2),
+            Self::Cmp(op1, op2) => write!(f, "cmpl {}, {}", op1, op2),
             Self::Idiv(op) => write!(f, "idivl {}", op),
             Self::Cdq => write!(f, "cdq"),
+            Self::Jmp(target) => write!(f, "jmp .L{}", target),
+            Self::JmpCC { cond, target } => write!(f, "j{} .L{}", cond, target),
+            Self::SetCC { cond, op } => {
+                match op {
+                    AsmOperand::Register(reg) => write!(f, "set{} {}", cond, reg.as_1_byte()),
+                    _ => write!(f, "set{} {}", cond, op),
+                }
+            }
+            Self::Label(label) => write!(f, ".L{}:", label),
             Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
             Self::Ret => write!(f, "movq %rbp, %rsp\npopq %rbp\nret"),
         }
@@ -108,6 +129,16 @@ enum AsmRegister {
     R10d,
     R11d,
 }
+impl AsmRegister {
+    fn as_1_byte(&self) -> String {
+        match self {
+            Self::Eax => "al",
+            Self::Edx => "dl",
+            Self::R10d => "r10b",
+            Self::R11d => "r11b",
+        }.to_string()
+    }
+}
 impl fmt::Display for AsmRegister {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -115,6 +146,28 @@ impl fmt::Display for AsmRegister {
             Self::Edx => write!(f, "edx"),
             Self::R10d => write!(f, "r10d"),
             Self::R11d => write!(f, "r11d"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum AsmCondCode {
+    E,
+    NE,
+    G,
+    GE,
+    L,
+    LE,
+}
+impl fmt::Display for AsmCondCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::E => write!(f, "e"),
+            Self::NE => write!(f, "ne"),
+            Self::L => write!(f, "l"),
+            Self::LE => write!(f, "le"),
+            Self::G => write!(f, "g"),
+            Self::GE => write!(f, "ge"),
         }
     }
 }
@@ -141,6 +194,7 @@ impl AssemblyGenerator {
         let mut tmp_to_offset = HashMap::<TempId, usize>::new();
         let mut curr_offset: usize = 0;
 
+        // TODO: is there a better way to do this?
         for instruction in &mut asm_program.function.instructions {
             match instruction {
                 AsmInstruction::Mov { src, dst } => {
@@ -159,8 +213,15 @@ impl AssemblyGenerator {
                     self.pseudo_to_stack(operand1, &mut curr_offset, &mut tmp_to_offset);
                     self.pseudo_to_stack(operand2, &mut curr_offset, &mut tmp_to_offset);
                 }
+                AsmInstruction::Cmp(op1, op2) => {
+                    self.pseudo_to_stack(op1, &mut curr_offset, &mut tmp_to_offset);
+                    self.pseudo_to_stack(op2, &mut curr_offset, &mut tmp_to_offset);
+                }
                 AsmInstruction::Idiv(operand) => {
                     self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset)
+                }
+                AsmInstruction::SetCC { cond: _, op } => {
+                    self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
                 }
                 _ => (),
             }
@@ -213,7 +274,10 @@ impl AssemblyGenerator {
                     operand2,
                 } => {
                     match operator {
-                        AsmBinaryOp::Add | AsmBinaryOp::Sub if matches!(operand1, AsmOperand::Stack(_)) && matches!(operand2, AsmOperand::Stack(_)) => {
+                        AsmBinaryOp::Add | AsmBinaryOp::Sub
+                            if matches!(operand1, AsmOperand::Stack(_))
+                                && matches!(operand2, AsmOperand::Stack(_)) =>
+                        {
                             // same as with mov, both operands can't be memory addresses
                             fixed.push(AsmInstruction::Mov {
                                 src: operand1,
@@ -227,13 +291,45 @@ impl AssemblyGenerator {
                         }
                         AsmBinaryOp::Imul if matches!(operand2, AsmOperand::Stack(_)) => {
                             // destination can't be memory address
-                            fixed.push(AsmInstruction::Mov { src: operand2.clone(), dst: AsmOperand::Register(AsmRegister::R11d) });
-                            fixed.push(AsmInstruction::Binary { operator, operand1, operand2: AsmOperand::Register(AsmRegister::R11d) });
-                            fixed.push(AsmInstruction::Mov { src: AsmOperand::Register(AsmRegister::R11d), dst: operand2 });
+                            fixed.push(AsmInstruction::Mov {
+                                src: operand2.clone(),
+                                dst: AsmOperand::Register(AsmRegister::R11d),
+                            });
+                            fixed.push(AsmInstruction::Binary {
+                                operator,
+                                operand1,
+                                operand2: AsmOperand::Register(AsmRegister::R11d),
+                            });
+                            fixed.push(AsmInstruction::Mov {
+                                src: AsmOperand::Register(AsmRegister::R11d),
+                                dst: operand2,
+                            });
                         }
-                        _ => fixed.push(AsmInstruction::Binary { operator, operand1, operand2 }),
+                        _ => fixed.push(AsmInstruction::Binary {
+                            operator,
+                            operand1,
+                            operand2,
+                        }),
                     }
-                }                 
+                }
+                AsmInstruction::Cmp(op1, op2)
+                    if matches!(op1, AsmOperand::Stack(_))
+                        && matches!(op2, AsmOperand::Stack(_)) =>
+                {
+                    fixed.push(AsmInstruction::Mov {
+                        src: op1,
+                        dst: AsmOperand::Register(AsmRegister::R10d),
+                    });
+                    fixed.push(AsmInstruction::Cmp(
+                        AsmOperand::Register(AsmRegister::R10d),
+                        op2,
+                    ));
+                }
+                AsmInstruction::Cmp(op1, op2 )
+                    if matches!(op2, AsmOperand::Imm(_)) => {
+                        fixed.push(AsmInstruction::Mov { src: op2, dst: AsmOperand::Register(AsmRegister::R11d) });
+                        fixed.push(AsmInstruction::Cmp(op1, AsmOperand::Register(AsmRegister::R11d)));
+                }
                 AsmInstruction::Idiv(op) if matches!(op, AsmOperand::Imm(_)) => {
                     // operand can't be an immediate value
                     fixed.push(AsmInstruction::Mov {
@@ -275,17 +371,34 @@ impl AssemblyGenerator {
                     });
                     instructions.push(AsmInstruction::Ret);
                 }
-                IRInstruction::Unary { op, src, dst } => {
-                    let dst = self.val_to_operand(dst);
-                    instructions.push(AsmInstruction::Mov {
-                        src: self.val_to_operand(src),
-                        dst: dst.clone(),
-                    });
-                    instructions.push(AsmInstruction::Unary {
-                        operator: self.translate_unop(op),
-                        operand: dst,
-                    });
-                }
+                IRInstruction::Unary { op, src, dst } => match op {
+                    UnaryOp::LogicalNot => {
+                        let dst = self.val_to_operand(dst);
+                        instructions.push(AsmInstruction::Cmp(
+                            AsmOperand::Imm(0),
+                            self.val_to_operand(src),
+                        ));
+                        instructions.push(AsmInstruction::Mov {
+                            src: AsmOperand::Imm(0),
+                            dst: dst.clone(),
+                        });
+                        instructions.push(AsmInstruction::SetCC {
+                            cond: AsmCondCode::E,
+                            op: dst,
+                        });
+                    }
+                    _ => {
+                        let dst = self.val_to_operand(dst);
+                        instructions.push(AsmInstruction::Mov {
+                            src: self.val_to_operand(src),
+                            dst: dst.clone(),
+                        });
+                        instructions.push(AsmInstruction::Unary {
+                            operator: self.translate_unop(op),
+                            operand: dst,
+                        });
+                    }
+                },
                 IRInstruction::Binary {
                     op,
                     src1,
@@ -312,6 +425,35 @@ impl AssemblyGenerator {
                             dst: self.val_to_operand(dst),
                         });
                     }
+                    BinaryOp::Eq
+                    | BinaryOp::Neq
+                    | BinaryOp::Less
+                    | BinaryOp::Greater
+                    | BinaryOp::Leq
+                    | BinaryOp::Geq => {
+                        let dst = self.val_to_operand(dst);
+                        let cond = match op {
+                            BinaryOp::Eq => AsmCondCode::E,
+                            BinaryOp::Neq => AsmCondCode::NE,
+                            BinaryOp::Less => AsmCondCode::L,
+                            BinaryOp::Greater => AsmCondCode::G,
+                            BinaryOp::Leq => AsmCondCode::LE,
+                            BinaryOp::Geq => AsmCondCode::GE,
+                            _ => panic!("100% Rust bug not mine")
+                        };
+                        instructions.push(AsmInstruction::Cmp(
+                            self.val_to_operand(src2),
+                            self.val_to_operand(src1),
+                        ));
+                        instructions.push(AsmInstruction::Mov {
+                            src: AsmOperand::Imm(0),
+                            dst: dst.clone(),
+                        });
+                        instructions.push(AsmInstruction::SetCC {
+                            cond,
+                            op: dst,
+                        });
+                    }
                     _ => {
                         let dst = self.val_to_operand(dst);
                         instructions.push(AsmInstruction::Mov {
@@ -325,6 +467,36 @@ impl AssemblyGenerator {
                         })
                     }
                 },
+                IRInstruction::Copy { src, dst } => instructions.push(AsmInstruction::Mov {
+                    src: self.val_to_operand(src),
+                    dst: self.val_to_operand(dst),
+                }),
+                IRInstruction::Jump(label) => {
+                    instructions.push(AsmInstruction::Jmp(label));
+                }
+                IRInstruction::JumpIfZero { condition, target } => {
+                    instructions.push(AsmInstruction::Cmp(
+                        AsmOperand::Imm(0),
+                        self.val_to_operand(condition),
+                    ));
+                    instructions.push(AsmInstruction::JmpCC {
+                        cond: AsmCondCode::E,
+                        target,
+                    });
+                }
+                IRInstruction::JumpIfNotZero { condition, target } => {
+                    instructions.push(AsmInstruction::Cmp(
+                        AsmOperand::Imm(0),
+                        self.val_to_operand(condition),
+                    ));
+                    instructions.push(AsmInstruction::JmpCC {
+                        cond: AsmCondCode::NE,
+                        target,
+                    });
+                }
+                IRInstruction::Label(label) => {
+                    instructions.push(AsmInstruction::Label(label));
+                }
             }
         }
         instructions
@@ -351,7 +523,7 @@ impl AssemblyGenerator {
             BinaryOp::Sub => AsmBinaryOp::Sub,
             BinaryOp::Mul => AsmBinaryOp::Imul,
             BinaryOp::Div | BinaryOp::Mod => unimplemented!(), // correspond to AsmInstruction::Idiv and are handled separately
-            _ => todo!("logical ops")
+            _ => todo!("logical ops"),
         }
     }
 

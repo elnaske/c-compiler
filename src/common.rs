@@ -18,7 +18,8 @@ impl Keyword {
     }
 }
 
-// TODO: this is too much repeated code, go back to the way it was before
+// TODO: this is too much repeated code, go back to the way it was before (or find a better way)
+// TODO: try implementing copy trait to avoid using clone() everywhere
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
     BitwiseNot,
