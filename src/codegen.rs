@@ -16,31 +16,15 @@ struct AsmFunction {
 #[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
     // TODO: use tuples here instead of structs
-    Mov {
-        src: AsmOperand,
-        dst: AsmOperand,
-    },
-    Unary {
-        operator: AsmUnaryOp,
-        operand: AsmOperand,
-    },
-    Binary {
-        operator: AsmBinaryOp,
-        operand1: AsmOperand,
-        operand2: AsmOperand,
-    },
+    Mov(AsmOperand, AsmOperand),
+    Unary(AsmUnaryOp, AsmOperand),
+    Binary(AsmBinaryOp, AsmOperand, AsmOperand),
     Cmp(AsmOperand, AsmOperand),
     Idiv(AsmOperand),
     Cdq,
     Jmp(Label),
-    JmpCC {
-        cond: AsmCondCode,
-        target: Label,
-    },
-    SetCC {
-        cond: AsmCondCode,
-        op: AsmOperand,
-    },
+    JmpCC(AsmCondCode, Label),
+    SetCC(AsmCondCode, AsmOperand),
     Label(Label),
     AllocateStack(usize),
     Ret,
@@ -51,95 +35,52 @@ impl AsmInstruction {
         use AsmRegister::*;
 
         match self {
-            Self::Mov { src, dst }
+            Self::Mov(src, dst)
                 if matches!(src, AsmOperand::Stack(_)) && matches!(dst, AsmOperand::Stack(_)) =>
             {
                 // src and dst for mov can't both be memory addresses, use %r10d as an intermediate step
                 vec![
-                    Self::Mov {
-                        src,
-                        dst: Register(R10d),
-                    },
-                    Self::Mov {
-                        src: Register(R10d),
-                        dst,
-                    },
+                    Self::Mov(src, Register(R10d)),
+                    Self::Mov(Register(R10d), dst),
                 ]
             }
-            Self::Binary {
-                operator,
-                operand1,
-                operand2,
-            } => {
+            Self::Binary(operator, operand1, operand2) => {
                 match operator {
                     AsmBinaryOp::Add | AsmBinaryOp::Sub
                         if matches!(operand1, Stack(_)) && matches!(operand2, Stack(_)) =>
                     {
                         // same as with mov, both operands can't be memory addresses
                         vec![
-                            Self::Mov {
-                                src: operand1,
-                                dst: Register(R10d),
-                            },
-                            Self::Binary {
-                                operator,
-                                operand1: Register(R10d),
-                                operand2,
-                            },
+                            Self::Mov(operand1, Register(R10d)),
+                            Self::Binary(operator, Register(R10d), operand2),
                         ]
                     }
                     AsmBinaryOp::Imul if matches!(operand2, Stack(_)) => {
                         // destination can't be memory address
                         vec![
-                            Self::Mov {
-                                src: operand2.clone(),
-                                dst: Register(R11d),
-                            },
-                            Self::Binary {
-                                operator,
-                                operand1,
-                                operand2: Register(R11d),
-                            },
-                            Self::Mov {
-                                src: Register(R11d),
-                                dst: operand2,
-                            },
+                            Self::Mov(operand2.clone(), Register(R11d)),
+                            Self::Binary(operator, operand1, Register(R11d)),
+                            Self::Mov(Register(R11d), operand2),
                         ]
                     }
-                    _ => vec![Self::Binary {
-                        operator,
-                        operand1,
-                        operand2,
-                    }],
+                    _ => vec![Self::Binary(operator, operand1, operand2)],
                 }
             }
             Self::Cmp(op1, op2) if matches!(op1, Stack(_)) && matches!(op2, Stack(_)) => {
                 vec![
-                    Self::Mov {
-                        src: op1,
-                        dst: Register(R10d),
-                    },
+                    Self::Mov(op1, Register(R10d)),
                     Self::Cmp(Register(R10d), op2),
                 ]
             }
             Self::Cmp(op1, op2) if matches!(op2, Imm(_)) => {
                 vec![
-                    Self::Mov {
-                        src: op2,
-                        dst: Register(R11d),
-                    },
+                    Self::Mov(op2, Register(R11d)),
                     Self::Cmp(op1, Register(R11d)),
                 ]
             }
             Self::Idiv(op) if matches!(op, Imm(_)) => {
                 // operand can't be an immediate value
-                vec![
-                    Self::Mov {
-                        src: op,
-                        dst: Register(R10d),
-                    },
-                    Self::Idiv(Register(R10d)),
-                ]
+                vec![Self::Mov(op, Register(R10d)), Self::Idiv(Register(R10d))]
             }
             _ => vec![self],
         }
@@ -148,23 +89,19 @@ impl AsmInstruction {
 impl fmt::Display for AsmInstruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Mov { src, dst } => {
+            Self::Mov(src, dst) => {
                 write!(f, "movl {}, {}", src, dst)
             }
-            Self::Unary { operator, operand } => write!(f, "{} {}", operator, operand),
-            Self::Binary {
-                operator,
-                operand1,
-                operand2,
-            } => {
+            Self::Unary(operator, operand) => write!(f, "{} {}", operator, operand),
+            Self::Binary(operator, operand1, operand2) => {
                 write!(f, "{} {}, {}", operator, operand1, operand2)
             }
             Self::Cmp(op1, op2) => write!(f, "cmpl {}, {}", op1, op2),
             Self::Idiv(op) => write!(f, "idivl {}", op),
             Self::Cdq => write!(f, "cdq"),
             Self::Jmp(target) => write!(f, "jmp .L{}", target),
-            Self::JmpCC { cond, target } => write!(f, "j{} .L{}", cond, target),
-            Self::SetCC { cond, op } => match op {
+            Self::JmpCC(cond, target) => write!(f, "j{} .L{}", cond, target),
+            Self::SetCC(cond, op) => match op {
                 AsmOperand::Register(reg) => write!(f, "set{} {}", cond, reg.as_1_byte()),
                 _ => write!(f, "set{} {}", cond, op),
             },
@@ -299,19 +236,14 @@ impl AssemblyGenerator {
         // TODO: is there a better way to do this?
         for instruction in &mut asm_program.function.instructions {
             match instruction {
-                AsmInstruction::Mov { src, dst } => {
+                AsmInstruction::Mov(src, dst) => {
                     self.pseudo_to_stack(src, &mut curr_offset, &mut tmp_to_offset);
                     self.pseudo_to_stack(dst, &mut curr_offset, &mut tmp_to_offset);
                 }
-                AsmInstruction::Unary {
-                    operator: _,
-                    operand,
-                } => self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset),
-                AsmInstruction::Binary {
-                    operator: _,
-                    operand1,
-                    operand2,
-                } => {
+                AsmInstruction::Unary(_, operand) => {
+                    self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset)
+                }
+                AsmInstruction::Binary(_, operand1, operand2) => {
                     self.pseudo_to_stack(operand1, &mut curr_offset, &mut tmp_to_offset);
                     self.pseudo_to_stack(operand2, &mut curr_offset, &mut tmp_to_offset);
                 }
@@ -322,7 +254,7 @@ impl AssemblyGenerator {
                 AsmInstruction::Idiv(operand) => {
                     self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset)
                 }
-                AsmInstruction::SetCC { cond: _, op } => {
+                AsmInstruction::SetCC(_, op) => {
                     self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
                 }
                 _ => (),
