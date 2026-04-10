@@ -1,5 +1,5 @@
-use crate::common::{BinaryOp, UnaryOp};
 use crate::ir::*;
+use std::vec;
 use std::{collections::HashMap, fmt};
 
 #[derive(Debug, PartialEq)]
@@ -14,7 +14,8 @@ struct AsmFunction {
 }
 
 #[derive(Debug, PartialEq)]
-enum AsmInstruction {
+pub enum AsmInstruction {
+    // TODO: use tuples here instead of structs
     Mov {
         src: AsmOperand,
         dst: AsmOperand,
@@ -44,6 +45,106 @@ enum AsmInstruction {
     AllocateStack(usize),
     Ret,
 }
+impl AsmInstruction {
+    fn fix(self) -> Vec<AsmInstruction> {
+        use AsmOperand::*;
+        use AsmRegister::*;
+
+        match self {
+            Self::Mov { src, dst }
+                if matches!(src, AsmOperand::Stack(_)) && matches!(dst, AsmOperand::Stack(_)) =>
+            {
+                // src and dst for mov can't both be memory addresses, use %r10d as an intermediate step
+                vec![
+                    Self::Mov {
+                        src,
+                        dst: Register(R10d),
+                    },
+                    Self::Mov {
+                        src: Register(R10d),
+                        dst,
+                    },
+                ]
+            }
+            Self::Binary {
+                operator,
+                operand1,
+                operand2,
+            } => {
+                match operator {
+                    AsmBinaryOp::Add | AsmBinaryOp::Sub
+                        if matches!(operand1, Stack(_)) && matches!(operand2, Stack(_)) =>
+                    {
+                        // same as with mov, both operands can't be memory addresses
+                        vec![
+                            Self::Mov {
+                                src: operand1,
+                                dst: Register(R10d),
+                            },
+                            Self::Binary {
+                                operator,
+                                operand1: Register(R10d),
+                                operand2,
+                            },
+                        ]
+                    }
+                    AsmBinaryOp::Imul if matches!(operand2, Stack(_)) => {
+                        // destination can't be memory address
+                        vec![
+                            Self::Mov {
+                                src: operand2.clone(),
+                                dst: Register(R11d),
+                            },
+                            Self::Binary {
+                                operator,
+                                operand1,
+                                operand2: Register(R11d),
+                            },
+                            Self::Mov {
+                                src: Register(R11d),
+                                dst: operand2,
+                            },
+                        ]
+                    }
+                    _ => vec![Self::Binary {
+                        operator,
+                        operand1,
+                        operand2,
+                    }],
+                }
+            }
+            Self::Cmp(op1, op2) if matches!(op1, Stack(_)) && matches!(op2, Stack(_)) => {
+                vec![
+                    Self::Mov {
+                        src: op1,
+                        dst: Register(R10d),
+                    },
+                    Self::Cmp(Register(R10d), op2),
+                ]
+            }
+            Self::Cmp(op1, op2) if matches!(op2, Imm(_)) => {
+                vec![
+                    Self::Mov {
+                        src: op2,
+                        dst: Register(R11d),
+                    },
+                    Self::Cmp(op1, Register(R11d)),
+                ]
+            }
+            Self::Idiv(op) if matches!(op, Imm(_)) => {
+                // operand can't be an immediate value
+                vec![
+                    Self::Mov {
+                        src: op,
+                        dst: Register(R10d),
+                    },
+                    Self::Idiv(Register(R10d)),
+                ]
+            }
+            _ => vec![self],
+        }
+    }
+}
 impl fmt::Display for AsmInstruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -55,18 +156,18 @@ impl fmt::Display for AsmInstruction {
                 operator,
                 operand1,
                 operand2,
-            } => write!(f, "{} {}, {}", operator, operand1, operand2),
+            } => {
+                write!(f, "{} {}, {}", operator, operand1, operand2)
+            }
             Self::Cmp(op1, op2) => write!(f, "cmpl {}, {}", op1, op2),
             Self::Idiv(op) => write!(f, "idivl {}", op),
             Self::Cdq => write!(f, "cdq"),
             Self::Jmp(target) => write!(f, "jmp .L{}", target),
             Self::JmpCC { cond, target } => write!(f, "j{} .L{}", cond, target),
-            Self::SetCC { cond, op } => {
-                match op {
-                    AsmOperand::Register(reg) => write!(f, "set{} {}", cond, reg.as_1_byte()),
-                    _ => write!(f, "set{} {}", cond, op),
-                }
-            }
+            Self::SetCC { cond, op } => match op {
+                AsmOperand::Register(reg) => write!(f, "set{} {}", cond, reg.as_1_byte()),
+                _ => write!(f, "set{} {}", cond, op),
+            },
             Self::Label(label) => write!(f, ".L{}:", label),
             Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
             Self::Ret => write!(f, "movq %rbp, %rsp\npopq %rbp\nret"),
@@ -75,7 +176,7 @@ impl fmt::Display for AsmInstruction {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum AsmOperand {
+pub enum AsmOperand {
     Imm(i32),
     Register(AsmRegister),
     PseudoReg(TempId),
@@ -93,7 +194,7 @@ impl fmt::Display for AsmOperand {
 }
 
 #[derive(Debug, PartialEq)]
-enum AsmUnaryOp {
+pub enum AsmUnaryOp {
     Neg,
     Not,
 }
@@ -107,7 +208,7 @@ impl fmt::Display for AsmUnaryOp {
 }
 
 #[derive(Debug, PartialEq)]
-enum AsmBinaryOp {
+pub enum AsmBinaryOp {
     Add,
     Sub,
     Imul,
@@ -123,7 +224,7 @@ impl fmt::Display for AsmBinaryOp {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum AsmRegister {
+pub enum AsmRegister {
     Eax,
     Edx,
     R10d,
@@ -136,7 +237,8 @@ impl AsmRegister {
             Self::Edx => "dl",
             Self::R10d => "r10b",
             Self::R11d => "r11b",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 impl fmt::Display for AsmRegister {
@@ -151,7 +253,7 @@ impl fmt::Display for AsmRegister {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum AsmCondCode {
+pub enum AsmCondCode {
     E,
     NE,
     G,
@@ -253,95 +355,103 @@ impl AssemblyGenerator {
         let mut fixed = vec![AsmInstruction::AllocateStack(stack_size)];
 
         for instruction in &mut asm_program.function.instructions.drain(..) {
-            match instruction {
-                AsmInstruction::Mov { src, dst }
-                    if matches!(src, AsmOperand::Stack(_))
-                        && matches!(dst, AsmOperand::Stack(_)) =>
-                {
-                    // src and dst for mov can't both be memory addresses, use %r10d as an intermediate step
-                    fixed.push(AsmInstruction::Mov {
-                        src,
-                        dst: AsmOperand::Register(AsmRegister::R10d),
-                    });
-                    fixed.push(AsmInstruction::Mov {
-                        src: AsmOperand::Register(AsmRegister::R10d),
-                        dst,
-                    });
-                }
-                AsmInstruction::Binary {
-                    operator,
-                    operand1,
-                    operand2,
-                } => {
-                    match operator {
-                        AsmBinaryOp::Add | AsmBinaryOp::Sub
-                            if matches!(operand1, AsmOperand::Stack(_))
-                                && matches!(operand2, AsmOperand::Stack(_)) =>
-                        {
-                            // same as with mov, both operands can't be memory addresses
-                            fixed.push(AsmInstruction::Mov {
-                                src: operand1,
-                                dst: AsmOperand::Register(AsmRegister::R10d),
-                            });
-                            fixed.push(AsmInstruction::Binary {
-                                operator,
-                                operand1: AsmOperand::Register(AsmRegister::R10d),
-                                operand2,
-                            });
-                        }
-                        AsmBinaryOp::Imul if matches!(operand2, AsmOperand::Stack(_)) => {
-                            // destination can't be memory address
-                            fixed.push(AsmInstruction::Mov {
-                                src: operand2.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R11d),
-                            });
-                            fixed.push(AsmInstruction::Binary {
-                                operator,
-                                operand1,
-                                operand2: AsmOperand::Register(AsmRegister::R11d),
-                            });
-                            fixed.push(AsmInstruction::Mov {
-                                src: AsmOperand::Register(AsmRegister::R11d),
-                                dst: operand2,
-                            });
-                        }
-                        _ => fixed.push(AsmInstruction::Binary {
-                            operator,
-                            operand1,
-                            operand2,
-                        }),
-                    }
-                }
-                AsmInstruction::Cmp(op1, op2)
-                    if matches!(op1, AsmOperand::Stack(_))
-                        && matches!(op2, AsmOperand::Stack(_)) =>
-                {
-                    fixed.push(AsmInstruction::Mov {
-                        src: op1,
-                        dst: AsmOperand::Register(AsmRegister::R10d),
-                    });
-                    fixed.push(AsmInstruction::Cmp(
-                        AsmOperand::Register(AsmRegister::R10d),
-                        op2,
-                    ));
-                }
-                AsmInstruction::Cmp(op1, op2 )
-                    if matches!(op2, AsmOperand::Imm(_)) => {
-                        fixed.push(AsmInstruction::Mov { src: op2, dst: AsmOperand::Register(AsmRegister::R11d) });
-                        fixed.push(AsmInstruction::Cmp(op1, AsmOperand::Register(AsmRegister::R11d)));
-                }
-                AsmInstruction::Idiv(op) if matches!(op, AsmOperand::Imm(_)) => {
-                    // operand can't be an immediate value
-                    fixed.push(AsmInstruction::Mov {
-                        src: op,
-                        dst: AsmOperand::Register(AsmRegister::R10d),
-                    });
-                    fixed.push(AsmInstruction::Idiv(AsmOperand::Register(
-                        AsmRegister::R10d,
-                    )));
-                }
-                _ => fixed.push(instruction),
-            }
+            fixed.append(&mut instruction.fix());
+            // // match instruction {
+            // //     AsmInstruction::Mov { src, dst }
+            // //         if matches!(src, AsmOperand::Stack(_))
+            // //             && matches!(dst, AsmOperand::Stack(_)) =>
+            // //     {
+            // //         // src and dst for mov can't both be memory addresses, use %r10d as an intermediate step
+            // //         vec![
+            // //         Self::Mov {
+            // //             src,
+            // //             dst: AsmOperand::Register(AsmRegister::R10d),
+            // //         },
+            // //         Self::Mov {
+            // //             src: AsmOperand::Register(AsmRegister::R10d),
+            // //             dst,
+            // //         }
+            // //         ]
+            // //     }
+            // //     AsmInstruction::Binary {
+            // //         operator,
+            // //         operand1,
+            // //         operand2,
+            // //     } => {
+            // //         match operator {
+            // //             AsmBinaryOp::Add | AsmBinaryOp::Sub
+            // //                 if matches!(operand1, AsmOperand::Stack(_))
+            // //                     && matches!(operand2, AsmOperand::Stack(_)) =>
+            // //             {
+            // //                 // same as with mov, both operands can't be memory addresses
+            // //                 Self::Mov {
+            // //                     src: operand1,
+            // //                     dst: AsmOperand::Register(AsmRegister::R10d),
+            // //                 });
+            // //                 Self::Binary {
+            // //                     operator,
+            // //                     operand1: AsmOperand::Register(AsmRegister::R10d),
+            // //                     operand2,
+            // //                 });
+            // //             }
+            // //             AsmBinaryOp::Imul if matches!(operand2, AsmOperand::Stack(_)) => {
+            // //                 // destination can't be memory address
+            // //                 Self::Mov {
+            // //                     src: operand2.clone(),
+            // //                     dst: AsmOperand::Register(AsmRegister::R11d),
+            // //                 });
+            // //                 Self::Binary {
+            // //                     operator,
+            // //                     operand1,
+            // //                     operand2: AsmOperand::Register(AsmRegister::R11d),
+            // //                 });
+            // //                 Self::Mov {
+            // //                     src: AsmOperand::Register(AsmRegister::R11d),
+            // //                     dst: operand2,
+            // //                 });
+            // //             }
+            // //             _ => Self::Binary {
+            // //                 operator,
+            // //                 operand1,
+            // //                 operand2,
+            // //             }),
+            // //         }
+            // //     }
+            //     AsmInstruction::Cmp(op1, op2)
+            //         if matches!(op1, AsmOperand::Stack(_))
+            //             && matches!(op2, AsmOperand::Stack(_)) =>
+            //     {
+            //         Self::Mov {
+            //             src: op1,
+            //             dst: AsmOperand::Register(AsmRegister::R10d),
+            //         });
+            //         Self::Cmp(
+            //             AsmOperand::Register(AsmRegister::R10d),
+            //             op2,
+            //         ));
+            //     }
+            //     AsmInstruction::Cmp(op1, op2) if matches!(op2, AsmOperand::Imm(_)) => {
+            //         Self::Mov {
+            //             src: op2,
+            //             dst: AsmOperand::Register(AsmRegister::R11d),
+            //         });
+            //         Self::Cmp(
+            //             op1,
+            //             AsmOperand::Register(AsmRegister::R11d),
+            //         ));
+            //     }
+            //     AsmInstruction::Idiv(op) if matches!(op, AsmOperand::Imm(_)) => {
+            //         // operand can't be an immediate value
+            //         Self::Mov {
+            //             src: op,
+            //             dst: AsmOperand::Register(AsmRegister::R10d),
+            //         });
+            //         Self::Idiv(AsmOperand::Register(
+            //             AsmRegister::R10d,
+            //         )));
+            //     }
+            //     _ => fixed.push(instruction),
+            // }
         }
         asm_program.function.instructions = fixed;
     }
@@ -363,168 +473,9 @@ impl AssemblyGenerator {
         let mut instructions: Vec<AsmInstruction> = Vec::new();
 
         for ins in ir_instructions {
-            match ins {
-                IRInstruction::Return(val) => {
-                    instructions.push(AsmInstruction::Mov {
-                        src: self.val_to_operand(val),
-                        dst: AsmOperand::Register(AsmRegister::Eax),
-                    });
-                    instructions.push(AsmInstruction::Ret);
-                }
-                IRInstruction::Unary { op, src, dst } => match op {
-                    UnaryOp::LogicalNot => {
-                        let dst = self.val_to_operand(dst);
-                        instructions.push(AsmInstruction::Cmp(
-                            AsmOperand::Imm(0),
-                            self.val_to_operand(src),
-                        ));
-                        instructions.push(AsmInstruction::Mov {
-                            src: AsmOperand::Imm(0),
-                            dst: dst.clone(),
-                        });
-                        instructions.push(AsmInstruction::SetCC {
-                            cond: AsmCondCode::E,
-                            op: dst,
-                        });
-                    }
-                    _ => {
-                        let dst = self.val_to_operand(dst);
-                        instructions.push(AsmInstruction::Mov {
-                            src: self.val_to_operand(src),
-                            dst: dst.clone(),
-                        });
-                        instructions.push(AsmInstruction::Unary {
-                            operator: self.translate_unop(op),
-                            operand: dst,
-                        });
-                    }
-                },
-                IRInstruction::Binary {
-                    op,
-                    src1,
-                    src2,
-                    dst,
-                } => match op {
-                    BinaryOp::Div | BinaryOp::Mod => {
-                        instructions.push(AsmInstruction::Mov {
-                            src: self.val_to_operand(src1),
-                            dst: AsmOperand::Register(AsmRegister::Eax),
-                        });
-                        instructions.push(AsmInstruction::Cdq);
-                        instructions.push(AsmInstruction::Idiv(self.val_to_operand(src2)));
-
-                        let src_reg = match op {
-                            BinaryOp::Div => AsmRegister::Eax,
-                            BinaryOp::Mod => AsmRegister::Edx,
-                            _ => panic!(
-                                "This arm should be unreachable because op has to be one of the above. 100% Rust bug not mine."
-                            ),
-                        };
-                        instructions.push(AsmInstruction::Mov {
-                            src: AsmOperand::Register(src_reg),
-                            dst: self.val_to_operand(dst),
-                        });
-                    }
-                    BinaryOp::Eq
-                    | BinaryOp::Neq
-                    | BinaryOp::Less
-                    | BinaryOp::Greater
-                    | BinaryOp::Leq
-                    | BinaryOp::Geq => {
-                        let dst = self.val_to_operand(dst);
-                        let cond = match op {
-                            BinaryOp::Eq => AsmCondCode::E,
-                            BinaryOp::Neq => AsmCondCode::NE,
-                            BinaryOp::Less => AsmCondCode::L,
-                            BinaryOp::Greater => AsmCondCode::G,
-                            BinaryOp::Leq => AsmCondCode::LE,
-                            BinaryOp::Geq => AsmCondCode::GE,
-                            _ => panic!("100% Rust bug not mine")
-                        };
-                        instructions.push(AsmInstruction::Cmp(
-                            self.val_to_operand(src2),
-                            self.val_to_operand(src1),
-                        ));
-                        instructions.push(AsmInstruction::Mov {
-                            src: AsmOperand::Imm(0),
-                            dst: dst.clone(),
-                        });
-                        instructions.push(AsmInstruction::SetCC {
-                            cond,
-                            op: dst,
-                        });
-                    }
-                    _ => {
-                        let dst = self.val_to_operand(dst);
-                        instructions.push(AsmInstruction::Mov {
-                            src: self.val_to_operand(src1),
-                            dst: dst.clone(),
-                        });
-                        instructions.push(AsmInstruction::Binary {
-                            operator: self.translate_binop(op),
-                            operand1: self.val_to_operand(src2),
-                            operand2: dst.clone(),
-                        })
-                    }
-                },
-                IRInstruction::Copy { src, dst } => instructions.push(AsmInstruction::Mov {
-                    src: self.val_to_operand(src),
-                    dst: self.val_to_operand(dst),
-                }),
-                IRInstruction::Jump(label) => {
-                    instructions.push(AsmInstruction::Jmp(label));
-                }
-                IRInstruction::JumpIfZero { condition, target } => {
-                    instructions.push(AsmInstruction::Cmp(
-                        AsmOperand::Imm(0),
-                        self.val_to_operand(condition),
-                    ));
-                    instructions.push(AsmInstruction::JmpCC {
-                        cond: AsmCondCode::E,
-                        target,
-                    });
-                }
-                IRInstruction::JumpIfNotZero { condition, target } => {
-                    instructions.push(AsmInstruction::Cmp(
-                        AsmOperand::Imm(0),
-                        self.val_to_operand(condition),
-                    ));
-                    instructions.push(AsmInstruction::JmpCC {
-                        cond: AsmCondCode::NE,
-                        target,
-                    });
-                }
-                IRInstruction::Label(label) => {
-                    instructions.push(AsmInstruction::Label(label));
-                }
-            }
+            instructions.append(&mut ins.to_asm());
         }
         instructions
-    }
-
-    fn val_to_operand(&self, val: IRVal) -> AsmOperand {
-        match val {
-            IRVal::Constant(i) => AsmOperand::Imm(i),
-            IRVal::Var(tmp) => AsmOperand::PseudoReg(tmp),
-        }
-    }
-
-    fn translate_unop(&self, op: UnaryOp) -> AsmUnaryOp {
-        match op {
-            UnaryOp::BitwiseNot => AsmUnaryOp::Not,
-            UnaryOp::Negation => AsmUnaryOp::Neg,
-            _ => unimplemented!(),
-        }
-    }
-
-    fn translate_binop(&self, op: BinaryOp) -> AsmBinaryOp {
-        match op {
-            BinaryOp::Add => AsmBinaryOp::Add,
-            BinaryOp::Sub => AsmBinaryOp::Sub,
-            BinaryOp::Mul => AsmBinaryOp::Imul,
-            BinaryOp::Div | BinaryOp::Mod => unimplemented!(), // correspond to AsmInstruction::Idiv and are handled separately
-            _ => todo!("logical ops"),
-        }
     }
 
     pub fn generate_asm(&self, program: AsmProgram) -> String {

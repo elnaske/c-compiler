@@ -1,5 +1,12 @@
 use std::fmt;
 
+use crate::codegen::{
+    AsmBinaryOp, AsmCondCode,
+    AsmInstruction::{self, *},
+    AsmOperand::{self, *},
+    AsmRegister::{self, *},
+    AsmUnaryOp,
+};
 use crate::common::{BinaryOp, UnaryOp};
 use crate::parser::*;
 
@@ -17,19 +24,175 @@ pub struct IRFunction {
 #[derive(Debug, PartialEq)]
 pub enum IRInstruction {
     Return(IRVal),
-    Unary { op: UnaryOp, src: IRVal, dst: IRVal },
-    Binary { op: BinaryOp, src1: IRVal, src2: IRVal, dst: IRVal },
-    Copy { src: IRVal, dst: IRVal },
+    Unary {
+        op: UnaryOp,
+        src: IRVal,
+        dst: IRVal,
+    },
+    Binary {
+        op: BinaryOp,
+        src1: IRVal,
+        src2: IRVal,
+        dst: IRVal,
+    },
+    Copy {
+        src: IRVal,
+        dst: IRVal,
+    },
     Jump(Label),
-    JumpIfZero { condition: IRVal, target: Label },
-    JumpIfNotZero { condition: IRVal, target: Label },
+    JumpIfZero {
+        condition: IRVal,
+        target: Label,
+    },
+    JumpIfNotZero {
+        condition: IRVal,
+        target: Label,
+    },
     Label(Label),
+}
+impl IRInstruction {
+    pub fn to_asm(&self) -> Vec<AsmInstruction> {
+        match self {
+            Self::Return(val) => {
+                vec![
+                    Mov {
+                        src: val.to_asm(),
+                        dst: Register(Eax),
+                    },
+                    Ret,
+                ]
+            }
+            Self::Unary { op, src, dst } => match op {
+                UnaryOp::LogicalNot => {
+                    vec![
+                        Cmp(Imm(0), src.to_asm()),
+                        Mov {
+                            src: Imm(0),
+                            dst: dst.to_asm(),
+                        },
+                        SetCC {
+                            cond: AsmCondCode::E,
+                            op: dst.to_asm(),
+                        },
+                    ]
+                }
+                _ => {
+                    vec![
+                        Mov {
+                            src: src.to_asm(),
+                            dst: dst.to_asm(),
+                        },
+                        Unary {
+                            operator: translate_unop(op.clone()),
+                            operand: dst.to_asm(),
+                        },
+                    ]
+                }
+            },
+            Self::Binary {
+                op,
+                src1,
+                src2,
+                dst,
+            } => match op {
+                BinaryOp::Div | BinaryOp::Mod => {
+                    let src_reg = match op {
+                        BinaryOp::Div => AsmRegister::Eax,
+                        BinaryOp::Mod => AsmRegister::Edx,
+                        _ => panic!(
+                            "This arm should be unreachable because op has to be one of the above. 100% Rust bug not mine."
+                        ),
+                    };
+                    vec![
+                        Mov {
+                            src: src1.to_asm(),
+                            dst: AsmOperand::Register(AsmRegister::Eax),
+                        },
+                        Cdq,
+                        Idiv(src2.to_asm()),
+                        Mov {
+                            src: AsmOperand::Register(src_reg),
+                            dst: dst.to_asm(),
+                        },
+                    ]
+                }
+                BinaryOp::Eq
+                | BinaryOp::Neq
+                | BinaryOp::Less
+                | BinaryOp::Greater
+                | BinaryOp::Leq
+                | BinaryOp::Geq => {
+                    let cond = match op {
+                        BinaryOp::Eq => AsmCondCode::E,
+                        BinaryOp::Neq => AsmCondCode::NE,
+                        BinaryOp::Less => AsmCondCode::L,
+                        BinaryOp::Greater => AsmCondCode::G,
+                        BinaryOp::Leq => AsmCondCode::LE,
+                        BinaryOp::Geq => AsmCondCode::GE,
+                        _ => panic!("100% Rust bug not mine"),
+                    };
+                    vec![
+                        Cmp(src2.to_asm(), src1.to_asm()),
+                        Mov {
+                            src: AsmOperand::Imm(0),
+                            dst: dst.to_asm(),
+                        },
+                        SetCC {
+                            cond,
+                            op: dst.to_asm(),
+                        },
+                    ]
+                }
+                _ => {
+                    vec![
+                        Mov {
+                            src: src1.to_asm(),
+                            dst: dst.to_asm(),
+                        },
+                        Binary {
+                            operator: translate_binop(op.clone()),
+                            operand1: src2.to_asm(),
+                            operand2: dst.to_asm(),
+                        },
+                    ]
+                }
+            },
+            Self::Copy { src, dst } => {
+                vec![Mov {
+                    src: src.to_asm(),
+                    dst: dst.to_asm(),
+                }]
+            }
+            Self::Jump(label) => vec![Jmp(*label)],
+            Self::JumpIfZero { condition, target } => {
+                vec![
+                    Cmp(Imm(0), condition.to_asm()),
+                    JmpCC { cond: AsmCondCode::E, target: *target },
+                ]
+            }
+            Self::JumpIfNotZero { condition, target } => {
+                vec![
+                    Cmp(Imm(0), condition.to_asm()),
+                    JmpCC { cond: AsmCondCode::NE, target: *target },
+                ]
+            }
+            Self::Label(label) => vec![AsmInstruction::Label(*label)]
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum IRVal {
     Constant(i32),
     Var(TempId),
+}
+impl IRVal {
+    pub fn to_asm(&self) -> AsmOperand {
+        match self {
+            Self::Constant(i) => AsmOperand::Imm(*i),
+            Self::Var(tmp) => AsmOperand::PseudoReg(*tmp),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -40,6 +203,24 @@ pub struct Label(u32);
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "label_{}", self.0)
+    }
+}
+
+fn translate_unop(op: UnaryOp) -> AsmUnaryOp {
+    match op {
+        UnaryOp::BitwiseNot => AsmUnaryOp::Not,
+        UnaryOp::Negation => AsmUnaryOp::Neg,
+        _ => unimplemented!(),
+    }
+}
+
+fn translate_binop(op: BinaryOp) -> AsmBinaryOp {
+    match op {
+        BinaryOp::Add => AsmBinaryOp::Add,
+        BinaryOp::Sub => AsmBinaryOp::Sub,
+        BinaryOp::Mul => AsmBinaryOp::Imul,
+        BinaryOp::Div | BinaryOp::Mod => unimplemented!(), // correspond to AsmInstruction::Idiv and are handled separately
+        _ => todo!("logical ops"),
     }
 }
 
@@ -54,7 +235,10 @@ impl Default for IRGenerator {
 }
 impl IRGenerator {
     pub fn new() -> Self {
-        IRGenerator { next_var_id: 0, next_label_id: 0 }
+        IRGenerator {
+            next_var_id: 0,
+            next_label_id: 0,
+        }
     }
 
     fn create_temp_var(&mut self) -> TempId {
@@ -107,53 +291,81 @@ impl IRGenerator {
                 let (src1, mut ins1) = self.exp_to_instructions(*exp1);
                 let (src2, mut ins2) = self.exp_to_instructions(*exp2);
 
-
                 match op {
                     BinaryOp::LogicalAnd => {
                         let dst = IRVal::Var(self.create_temp_var());
                         let false_label = self.create_jump_label();
                         let end_label = self.create_jump_label();
-                        
+
                         instructions.append(&mut ins1);
-                        instructions.push(IRInstruction::JumpIfZero { condition: src1, target: false_label });
+                        instructions.push(IRInstruction::JumpIfZero {
+                            condition: src1,
+                            target: false_label,
+                        });
                         instructions.append(&mut ins2);
-                        instructions.push(IRInstruction::JumpIfZero { condition: src2, target: false_label });
-                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(1), dst });
+                        instructions.push(IRInstruction::JumpIfZero {
+                            condition: src2,
+                            target: false_label,
+                        });
+                        instructions.push(IRInstruction::Copy {
+                            src: IRVal::Constant(1),
+                            dst,
+                        });
                         instructions.push(IRInstruction::Jump(end_label));
                         instructions.push(IRInstruction::Label(false_label));
-                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(0), dst });
+                        instructions.push(IRInstruction::Copy {
+                            src: IRVal::Constant(0),
+                            dst,
+                        });
                         instructions.push(IRInstruction::Label(end_label));
-                        
+
                         val = dst;
                     }
                     BinaryOp::LogicalOr => {
                         let dst = IRVal::Var(self.create_temp_var());
                         let true_label = self.create_jump_label();
                         let end_label = self.create_jump_label();
-                        
+
                         instructions.append(&mut ins1);
-                        instructions.push(IRInstruction::JumpIfNotZero { condition: src1, target: true_label });
+                        instructions.push(IRInstruction::JumpIfNotZero {
+                            condition: src1,
+                            target: true_label,
+                        });
                         instructions.append(&mut ins2);
-                        instructions.push(IRInstruction::JumpIfNotZero { condition: src2, target: true_label });
-                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(0), dst });
+                        instructions.push(IRInstruction::JumpIfNotZero {
+                            condition: src2,
+                            target: true_label,
+                        });
+                        instructions.push(IRInstruction::Copy {
+                            src: IRVal::Constant(0),
+                            dst,
+                        });
                         instructions.push(IRInstruction::Jump(end_label));
                         instructions.push(IRInstruction::Label(true_label));
-                        instructions.push(IRInstruction::Copy { src: IRVal::Constant(1), dst });
+                        instructions.push(IRInstruction::Copy {
+                            src: IRVal::Constant(1),
+                            dst,
+                        });
                         instructions.push(IRInstruction::Label(end_label));
-                        
+
                         val = dst;
                     }
                     _ => {
                         instructions.append(&mut ins1);
                         instructions.append(&mut ins2);
-                        
+
                         let dst = IRVal::Var(self.create_temp_var());
-                        instructions.push(IRInstruction::Binary { op, src1, src2, dst });
-                        
+                        instructions.push(IRInstruction::Binary {
+                            op,
+                            src1,
+                            src2,
+                            dst,
+                        });
+
                         val = dst;
                     }
                 }
-            },
+            }
         };
         (val, instructions)
     }
@@ -173,7 +385,7 @@ impl IRGenerator {
             }
             CFactor::Expression(exp) => {
                 (val, instructions) = self.exp_to_instructions(*exp);
-            },
+            }
         }
         (val, instructions)
     }
