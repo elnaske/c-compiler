@@ -274,7 +274,7 @@ impl AssemblyGenerator {
                 Some(offset) => *offset,
                 None => {
                     *curr_offset += 4;
-                    tmp_to_offset.insert(tmp.clone(), *curr_offset);
+                    tmp_to_offset.insert(*tmp, *curr_offset);
                     *curr_offset
                 }
             };
@@ -288,102 +288,6 @@ impl AssemblyGenerator {
 
         for instruction in &mut asm_program.function.instructions.drain(..) {
             fixed.append(&mut instruction.fix());
-            // // match instruction {
-            // //     AsmInstruction::Mov { src, dst }
-            // //         if matches!(src, AsmOperand::Stack(_))
-            // //             && matches!(dst, AsmOperand::Stack(_)) =>
-            // //     {
-            // //         // src and dst for mov can't both be memory addresses, use %r10d as an intermediate step
-            // //         vec![
-            // //         Self::Mov {
-            // //             src,
-            // //             dst: AsmOperand::Register(AsmRegister::R10d),
-            // //         },
-            // //         Self::Mov {
-            // //             src: AsmOperand::Register(AsmRegister::R10d),
-            // //             dst,
-            // //         }
-            // //         ]
-            // //     }
-            // //     AsmInstruction::Binary {
-            // //         operator,
-            // //         operand1,
-            // //         operand2,
-            // //     } => {
-            // //         match operator {
-            // //             AsmBinaryOp::Add | AsmBinaryOp::Sub
-            // //                 if matches!(operand1, AsmOperand::Stack(_))
-            // //                     && matches!(operand2, AsmOperand::Stack(_)) =>
-            // //             {
-            // //                 // same as with mov, both operands can't be memory addresses
-            // //                 Self::Mov {
-            // //                     src: operand1,
-            // //                     dst: AsmOperand::Register(AsmRegister::R10d),
-            // //                 });
-            // //                 Self::Binary {
-            // //                     operator,
-            // //                     operand1: AsmOperand::Register(AsmRegister::R10d),
-            // //                     operand2,
-            // //                 });
-            // //             }
-            // //             AsmBinaryOp::Imul if matches!(operand2, AsmOperand::Stack(_)) => {
-            // //                 // destination can't be memory address
-            // //                 Self::Mov {
-            // //                     src: operand2.clone(),
-            // //                     dst: AsmOperand::Register(AsmRegister::R11d),
-            // //                 });
-            // //                 Self::Binary {
-            // //                     operator,
-            // //                     operand1,
-            // //                     operand2: AsmOperand::Register(AsmRegister::R11d),
-            // //                 });
-            // //                 Self::Mov {
-            // //                     src: AsmOperand::Register(AsmRegister::R11d),
-            // //                     dst: operand2,
-            // //                 });
-            // //             }
-            // //             _ => Self::Binary {
-            // //                 operator,
-            // //                 operand1,
-            // //                 operand2,
-            // //             }),
-            // //         }
-            // //     }
-            //     AsmInstruction::Cmp(op1, op2)
-            //         if matches!(op1, AsmOperand::Stack(_))
-            //             && matches!(op2, AsmOperand::Stack(_)) =>
-            //     {
-            //         Self::Mov {
-            //             src: op1,
-            //             dst: AsmOperand::Register(AsmRegister::R10d),
-            //         });
-            //         Self::Cmp(
-            //             AsmOperand::Register(AsmRegister::R10d),
-            //             op2,
-            //         ));
-            //     }
-            //     AsmInstruction::Cmp(op1, op2) if matches!(op2, AsmOperand::Imm(_)) => {
-            //         Self::Mov {
-            //             src: op2,
-            //             dst: AsmOperand::Register(AsmRegister::R11d),
-            //         });
-            //         Self::Cmp(
-            //             op1,
-            //             AsmOperand::Register(AsmRegister::R11d),
-            //         ));
-            //     }
-            //     AsmInstruction::Idiv(op) if matches!(op, AsmOperand::Imm(_)) => {
-            //         // operand can't be an immediate value
-            //         Self::Mov {
-            //             src: op,
-            //             dst: AsmOperand::Register(AsmRegister::R10d),
-            //         });
-            //         Self::Idiv(AsmOperand::Register(
-            //             AsmRegister::R10d,
-            //         )));
-            //     }
-            //     _ => fixed.push(instruction),
-            // }
         }
         asm_program.function.instructions = fixed;
     }
@@ -402,12 +306,7 @@ impl AssemblyGenerator {
     }
 
     fn translate_instructions(&self, ir_instructions: Vec<IRInstruction>) -> Vec<AsmInstruction> {
-        let mut instructions: Vec<AsmInstruction> = Vec::new();
-
-        for ins in ir_instructions {
-            instructions.append(&mut ins.to_asm());
-        }
-        instructions
+        ir_instructions.into_iter().map(|ins| ins.to_asm()).flatten().collect()
     }
 
     pub fn generate_asm(&self, program: AsmProgram) -> String {

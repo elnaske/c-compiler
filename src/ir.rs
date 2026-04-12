@@ -24,7 +24,7 @@ pub struct IRFunction {
 #[derive(Debug, PartialEq)]
 pub enum IRInstruction {
     Return(IRVal),
-    Unary(UnaryOp, IRVal, IRVal), // op, src, dst
+    Unary(UnaryOp, IRVal, IRVal),          // op, src, dst
     Binary(BinaryOp, IRVal, IRVal, IRVal), // op, src1, src2, dst
     Copy(IRVal, IRVal),
     Jump(Label),
@@ -217,84 +217,84 @@ impl IRGenerator {
     }
 
     fn exp_to_instructions(&mut self, c_expression: CExpression) -> (IRVal, Vec<IRInstruction>) {
-        let val;
-        let mut instructions = Vec::<IRInstruction>::new();
-
         match c_expression {
-            CExpression::Factor(f) => {
-                (val, instructions) = self.factor_to_instructions(*f);
-            }
-            CExpression::Binary(op, exp1, exp2) => {
-                let (src1, mut ins1) = self.exp_to_instructions(*exp1);
-                let (src2, mut ins2) = self.exp_to_instructions(*exp2);
-
-                match op {
-                    BinaryOp::LogicalAnd => {
-                        let dst = IRVal::Var(self.create_temp_var());
-                        let false_label = self.create_jump_label();
-                        let end_label = self.create_jump_label();
-
-                        instructions.append(&mut ins1);
-                        instructions.push(IRInstruction::JumpIfZero(src1, false_label));
-                        instructions.append(&mut ins2);
-                        instructions.push(IRInstruction::JumpIfZero(src2, false_label));
-                        instructions.push(IRInstruction::Copy(IRVal::Constant(1), dst));
-                        instructions.push(IRInstruction::Jump(end_label));
-                        instructions.push(IRInstruction::Label(false_label));
-                        instructions.push(IRInstruction::Copy(IRVal::Constant(0), dst));
-                        instructions.push(IRInstruction::Label(end_label));
-
-                        val = dst;
-                    }
-                    BinaryOp::LogicalOr => {
-                        let dst = IRVal::Var(self.create_temp_var());
-                        let true_label = self.create_jump_label();
-                        let end_label = self.create_jump_label();
-
-                        instructions.append(&mut ins1);
-                        instructions.push(IRInstruction::JumpIfNotZero(src1, true_label));
-                        instructions.append(&mut ins2);
-                        instructions.push(IRInstruction::JumpIfNotZero(src2, true_label));
-                        instructions.push(IRInstruction::Copy(IRVal::Constant(0), dst));
-                        instructions.push(IRInstruction::Jump(end_label));
-                        instructions.push(IRInstruction::Label(true_label));
-                        instructions.push(IRInstruction::Copy(IRVal::Constant(1), dst));
-                        instructions.push(IRInstruction::Label(end_label));
-
-                        val = dst;
-                    }
-                    _ => {
-                        instructions.append(&mut ins1);
-                        instructions.append(&mut ins2);
-
-                        let dst = IRVal::Var(self.create_temp_var());
-                        instructions.push(IRInstruction::Binary(op, src1, src2, dst));
-
-                        val = dst;
-                    }
-                }
-            }
-        };
-        (val, instructions)
+            CExpression::Factor(f) => self.factor_to_instructions(*f),
+            CExpression::Binary(op, exp1, exp2) => self.binop_to_instructions(op, *exp1, *exp2),
+        }
     }
 
     fn factor_to_instructions(&mut self, c_factor: CFactor) -> (IRVal, Vec<IRInstruction>) {
-        let val;
-        let mut instructions = Vec::<IRInstruction>::new();
         match c_factor {
-            CFactor::Constant(i) => val = IRVal::Constant(i),
+            CFactor::Constant(i) => (IRVal::Constant(i), vec![]),
             CFactor::Unary(op, inner_exp) => {
                 let (src, mut inner_instructions) = self.factor_to_instructions(*inner_exp);
                 let dst = IRVal::Var(self.create_temp_var());
 
-                val = dst.clone();
-                instructions.append(&mut inner_instructions);
-                instructions.push(IRInstruction::Unary(op, src, dst));
+                inner_instructions.push(IRInstruction::Unary(op, src, dst));
+                
+                (dst, inner_instructions)
             }
-            CFactor::Expression(exp) => {
-                (val, instructions) = self.exp_to_instructions(*exp);
+            CFactor::Expression(exp) => self.exp_to_instructions(*exp),
+        }
+    }
+
+    fn binop_to_instructions(
+        &mut self,
+        op: BinaryOp,
+        exp1: CExpression,
+        exp2: CExpression,
+    ) -> (IRVal, Vec<IRInstruction>) {
+        use IRInstruction::*;
+
+        let (src1, ins1) = self.exp_to_instructions(exp1);
+        let (src2, ins2) = self.exp_to_instructions(exp2);
+        let dst = IRVal::Var(self.create_temp_var());
+
+        let instructions = match op {
+            BinaryOp::LogicalAnd => {
+                let false_label = self.create_jump_label();
+                let end_label = self.create_jump_label();
+
+                vec![
+                    ins1,
+                    vec![JumpIfZero(src1, false_label)],
+                    ins2,
+                    vec![
+                        JumpIfZero(src2, false_label),
+                        Copy(IRVal::Constant(1), dst),
+                        Jump(end_label),
+                        Label(false_label),
+                        Copy(IRVal::Constant(0), dst),
+                        Label(end_label),
+                    ],
+                ]
+            }
+            BinaryOp::LogicalOr => {
+                let true_label = self.create_jump_label();
+                let end_label = self.create_jump_label();
+
+                vec![
+                    ins1,
+                    vec![JumpIfNotZero(src1, true_label)],
+                    ins2,
+                    vec![
+                        JumpIfNotZero(src2, true_label),
+                        Copy(IRVal::Constant(0), dst),
+                        Jump(end_label),
+                        Label(true_label),
+                        Copy(IRVal::Constant(1), dst),
+                        Label(end_label),
+                    ],
+                ]
+            }
+            _ => {
+                vec![ins1, ins2, vec![Binary(op, src1, src2, dst)]]
             }
         }
-        (val, instructions)
+        .into_iter()
+        .flatten()
+        .collect();
+
+        (dst, instructions)
     }
 }
