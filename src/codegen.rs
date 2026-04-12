@@ -15,7 +15,6 @@ struct AsmFunction {
 
 #[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
-    // TODO: use tuples here instead of structs
     Mov(AsmOperand, AsmOperand),
     Unary(AsmUnaryOp, AsmOperand),
     Binary(AsmBinaryOp, AsmOperand, AsmOperand),
@@ -233,28 +232,17 @@ impl AssemblyGenerator {
         let mut tmp_to_offset = HashMap::<TempId, usize>::new();
         let mut curr_offset: usize = 0;
 
-        // TODO: is there a better way to do this?
         for instruction in &mut asm_program.function.instructions {
             match instruction {
-                AsmInstruction::Mov(src, dst) => {
-                    self.pseudo_to_stack(src, &mut curr_offset, &mut tmp_to_offset);
-                    self.pseudo_to_stack(dst, &mut curr_offset, &mut tmp_to_offset);
-                }
-                AsmInstruction::Unary(_, operand) => {
-                    self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset)
-                }
-                AsmInstruction::Binary(_, operand1, operand2) => {
-                    self.pseudo_to_stack(operand1, &mut curr_offset, &mut tmp_to_offset);
-                    self.pseudo_to_stack(operand2, &mut curr_offset, &mut tmp_to_offset);
-                }
-                AsmInstruction::Cmp(op1, op2) => {
+                AsmInstruction::Mov(op1, op2)
+                | AsmInstruction::Binary(_, op1, op2)
+                | AsmInstruction::Cmp(op1, op2) => {
                     self.pseudo_to_stack(op1, &mut curr_offset, &mut tmp_to_offset);
                     self.pseudo_to_stack(op2, &mut curr_offset, &mut tmp_to_offset);
                 }
-                AsmInstruction::Idiv(operand) => {
-                    self.pseudo_to_stack(operand, &mut curr_offset, &mut tmp_to_offset)
-                }
-                AsmInstruction::SetCC(_, op) => {
+                AsmInstruction::Unary(_, op)
+                | AsmInstruction::Idiv(op)
+                | AsmInstruction::SetCC(_, op) => {
                     self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
                 }
                 _ => (),
@@ -306,16 +294,21 @@ impl AssemblyGenerator {
     }
 
     fn translate_instructions(&self, ir_instructions: Vec<IRInstruction>) -> Vec<AsmInstruction> {
-        ir_instructions.into_iter().map(|ins| ins.to_asm()).flatten().collect()
+        ir_instructions
+            .into_iter()
+            .map(|ins| ins.to_asm())
+            .flatten()
+            .collect()
     }
 
     pub fn generate_asm(&self, program: AsmProgram) -> String {
-        let mut lines: Vec<String> = Vec::new();
+        let mut lines: Vec<String> = vec![
+            format!("\t.globl {}", program.function.name),
+            format!("{}:", program.function.name),
+            "pushq %rbp".to_string(),
+            "movq %rsp, %rbp".to_string(),
+        ];
 
-        lines.push(format!("\t.globl {}", program.function.name));
-        lines.push(format!("{}:", program.function.name));
-        lines.push("pushq %rbp".to_string());
-        lines.push("movq %rsp, %rbp".to_string());
         lines.append(
             &mut program
                 .function

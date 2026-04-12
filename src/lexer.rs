@@ -182,6 +182,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
+        // TODO: comments
         while let Some(b' ' | b'\t' | b'\n' | b'\r') = self.peek() {
             self.advance();
         }
