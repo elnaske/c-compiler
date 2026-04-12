@@ -58,7 +58,7 @@ impl Operator {
             Self::Minus => Some(UnaryOp::Negation),
             Self::Decrement => Some(UnaryOp::Decrement),
             Self::LogicalNot => Some(UnaryOp::LogicalNot),
-            _ => None
+            _ => None,
         }
     }
     pub fn to_binop(&self) -> Option<BinaryOp> {
@@ -76,7 +76,7 @@ impl Operator {
             Self::Greater => Some(BinaryOp::Greater),
             Self::Leq => Some(BinaryOp::Leq),
             Self::Geq => Some(BinaryOp::Geq),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -152,7 +152,7 @@ impl BinaryOp {
             Self::Eq => 30,
             Self::Neq => 30,
             Self::LogicalAnd => 10,
-            Self:: LogicalOr => 5,
+            Self::LogicalOr => 5,
         }
     }
 }

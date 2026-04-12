@@ -1,77 +1,8 @@
-use crate::common::{Keyword, Operator, UnaryOp, BinaryOp};
+use crate::common::{Keyword, Operator};
 use crate::lexer::Token;
-use std::fmt::{self, Formatter};
 
-// TODO: factor out ASTs into separate files
-
-#[derive(Debug, PartialEq)]
-pub struct CProgram {
-    pub function: CFunction,
-}
-
-impl fmt::Display for CProgram {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Program({})", self.function)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct CFunction {
-    pub name: String,
-    pub body: CStatement,
-}
-
-impl fmt::Display for CFunction {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Function(name='{}', body={})", self.name, self.body,)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum CStatement {
-    Return(CExpression),
-}
-
-impl fmt::Display for CStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Return(exp) => {
-                write!(f, "Return({})", exp)
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum CExpression {
-    Factor(Box<CFactor>),
-    Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
-}
-impl fmt::Display for CExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Factor(fac) => write!(f, "Factor({})", fac),
-            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, *exp1, *exp2),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum CFactor {
-    Constant(i32),
-    Unary(UnaryOp, Box<CFactor>),
-    Expression(Box<CExpression>),
-}
-
-impl fmt::Display for CFactor {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Constant(i) => write!(f, "Constant({})", i),
-            Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
-            Self::Expression(exp) => write!(f, "Expression({})", *exp),
-        }
-    }
-}
+pub mod c_ast;
+use c_ast::*;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -172,7 +103,10 @@ impl Parser {
             Some(Token::Operator(Operator::Decrement)) => unimplemented!(),
             Some(Token::Operator(op)) if op.is_unary() => {
                 // Not a big fan of how this is handled rn
-                Ok(CFactor::Unary(op.to_unop().unwrap(), Box::new(self.parse_factor()?)))
+                Ok(CFactor::Unary(
+                    op.to_unop().unwrap(),
+                    Box::new(self.parse_factor()?),
+                ))
             }
             Some(Token::OpenParenthesis) => {
                 let inner_exp = self.parse_expression(0)?;
