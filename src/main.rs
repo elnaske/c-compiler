@@ -12,7 +12,7 @@ pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
 pub mod ir;
-use ir::IRGenerator; 
+use ir::IRGenerator;
 
 #[derive(PartialEq, PartialOrd)]
 enum CompilerStage {
@@ -89,10 +89,10 @@ fn compile(
 
         if cfg.last_stage >= CompilerStage::IR {
             let ir_program = IRGenerator::new().c_to_ir(c_program);
-            
+
             if cfg.last_stage >= CompilerStage::CodeGen {
                 let codegen = AssemblyGenerator::new();
-                let asm_program= codegen.ir_to_asm(ir_program);
+                let asm_program = codegen.ir_to_asm(ir_program);
                 let asm = codegen.generate_asm(asm_program);
 
                 if cfg.last_stage >= CompilerStage::CodeEmission {

@@ -58,7 +58,7 @@ impl Operator {
             Self::Minus => Some(UnaryOp::Negation),
             Self::Decrement => Some(UnaryOp::Decrement),
             Self::LogicalNot => Some(UnaryOp::LogicalNot),
-            _ => None
+            _ => None,
         }
     }
     pub fn to_binop(&self) -> Option<BinaryOp> {
@@ -76,7 +76,7 @@ impl Operator {
             Self::Greater => Some(BinaryOp::Greater),
             Self::Leq => Some(BinaryOp::Leq),
             Self::Geq => Some(BinaryOp::Geq),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -152,7 +152,7 @@ impl BinaryOp {
             Self::Eq => 30,
             Self::Neq => 30,
             Self::LogicalAnd => 10,
-            Self:: LogicalOr => 5,
+            Self::LogicalOr => 5,
         }
     }
 }
@@ -175,31 +175,3 @@ impl fmt::Display for BinaryOp {
         }
     }
 }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub enum LogicalOp {
-//     Not,
-//     And,
-//     Or,
-//     Eq,
-//     Neq,
-//     Less,
-//     Greater,
-//     Leq,
-//     Geq,
-// }
-// impl fmt::Display for LogicalOp {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Self::Not => write!(f, "!"),
-//             Self::And => write!(f, "&&"),
-//             Self::Or => write!(f, "||"),
-//             Self::Eq => write!(f, "=="),
-//             Self::Neq => write!(f, "!="),
-//             Self::Less => write!(f, "<"),
-//             Self::Greater => write!(f, ">"),
-//             Self::Leq => write!(f, "<="),
-//             Self::Geq => write!(f, ">="),
-//         }
-//     }
-// }

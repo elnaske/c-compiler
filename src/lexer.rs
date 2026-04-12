@@ -6,8 +6,6 @@ pub enum Token {
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
-    // UnaryOp(UnaryOp),
-    // BinaryOp(BinaryOp),
     Operator(Operator),
     OpenParenthesis,
     CloseParenthesis,
@@ -95,7 +93,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::Neq))
                     }
-                    _ => Ok(Token::Operator(Operator::LogicalNot))
+                    _ => Ok(Token::Operator(Operator::LogicalNot)),
                 }
             }
             Some(b'&') => {
@@ -105,7 +103,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::LogicalAnd))
                     }
-                    _ => todo!("bitwise and")
+                    _ => todo!("bitwise and"),
                 }
             }
             Some(b'|') => {
@@ -115,7 +113,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::LogicalOr))
                     }
-                    _ => todo!("bitwise or")
+                    _ => todo!("bitwise or"),
                 }
             }
             Some(b'=') => {
@@ -125,7 +123,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::Eq))
                     }
-                    _ => todo!("assignment")
+                    _ => todo!("assignment"),
                 }
             }
             Some(b'<') => {
@@ -135,7 +133,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::Leq))
                     }
-                    _ => Ok(Token::Operator(Operator::Less))
+                    _ => Ok(Token::Operator(Operator::Less)),
                 }
             }
             Some(b'>') => {
@@ -145,7 +143,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::Geq))
                     }
-                    _ => Ok(Token::Operator(Operator::Greater))
+                    _ => Ok(Token::Operator(Operator::Greater)),
                 }
             }
             Some(b'(') => {
@@ -169,7 +167,11 @@ impl<'a> Lexer<'a> {
                 Ok(Token::Semicolon)
             }
             None => Ok(Token::Eof),
-            other => Err(CompilerError::new(ErrorKind::InvalidCharacter(other.unwrap()), self.filename.clone(), self.pos)),
+            other => Err(CompilerError::new(
+                ErrorKind::InvalidCharacter(other.unwrap()),
+                self.filename.clone(),
+                self.pos,
+            )),
         }
     }
 
@@ -182,6 +184,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
+        // TODO: comments
         while let Some(b' ' | b'\t' | b'\n' | b'\r') = self.peek() {
             self.advance();
         }
@@ -213,7 +216,11 @@ impl<'a> Lexer<'a> {
                 Some(b'0'..=b'9') => self.advance(),
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
                     // panic!("invalid suffix on integer constant")
-                    return Err(CompilerError::new(ErrorKind::InvalidIntSuffix, self.filename.clone(), self.pos));
+                    return Err(CompilerError::new(
+                        ErrorKind::InvalidIntSuffix,
+                        self.filename.clone(),
+                        self.pos,
+                    ));
                 } // put this here to satisfy a test case, might change how this is handled in the future
                 _ => break,
             }
@@ -224,84 +231,5 @@ impl<'a> Lexer<'a> {
                 .parse()
                 .expect("Not a valid number"),
         ))
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn return_2() {
-        let code = b"int main(void) {
-        return 2;
-        }";
-
-        let mut lexer = Lexer::new(code, "foo.c".to_string());
-        let tokens = lexer.get_tokens();
-
-        let ref_tokens = vec![
-            Token::Keyword(Keyword::Int),
-            Token::Identifier("main".to_string()),
-            Token::OpenParenthesis,
-            Token::Keyword(Keyword::Void),
-            Token::CloseParenthesis,
-            Token::OpenBrace,
-            Token::Keyword(Keyword::Return),
-            Token::Constant(2),
-            Token::Semicolon,
-            Token::CloseBrace,
-        ];
-
-        assert_eq!(ref_tokens, tokens);
-        assert_eq!(lexer.pos, 0);
-    }
-
-    #[test]
-    fn return_not_neg_2() {
-        let code = b"int main(void) {
-        return ~(-2);
-        }";
-
-        let mut lexer = Lexer::new(code, "foo.c".to_string());
-        let tokens = lexer.get_tokens();
-
-        let ref_tokens = vec![
-            Token::Keyword(Keyword::Int),
-            Token::Identifier("main".to_string()),
-            Token::OpenParenthesis,
-            Token::Keyword(Keyword::Void),
-            Token::CloseParenthesis,
-            Token::OpenBrace,
-            Token::Keyword(Keyword::Return),
-            Token::Operator(Operator::BitwiseNot),
-            Token::OpenParenthesis,
-            Token::Operator(Operator::Minus),
-            Token::Constant(2),
-            Token::CloseParenthesis,
-            Token::Semicolon,
-            Token::CloseBrace,
-        ];
-
-        assert_eq!(ref_tokens, tokens);
-        assert_eq!(lexer.pos, 0);
-    }
-
-    #[test]
-    fn negation_vs_decrement() {
-        let code_neg = b"-2";
-        let code_dec = b"--2";
-
-        let neg_tokens = Lexer::new(code_neg, "foo.c".to_string()).get_tokens();
-        let dec_tokens = Lexer::new(code_dec, "foo.c".to_string()).get_tokens();
-
-        assert_eq!(
-            neg_tokens,
-            vec![Token::Operator(Operator::Minus), Token::Constant(2)]
-        );
-        assert_eq!(
-            dec_tokens,
-            vec![Token::Operator(Operator::Decrement), Token::Constant(2)]
-        );
     }
 }

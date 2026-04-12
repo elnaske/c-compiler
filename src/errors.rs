@@ -3,12 +3,12 @@
 use std::fmt;
 
 use crate::lexer::Token;
-    
-fn find_line_and_col(filename: &str, pos: usize) -> (usize, usize) {
+
+fn find_line_and_col(_filename: &str, _pos: usize) -> (usize, usize) {
     unimplemented!()
 }
 
-fn get_full_line(line_num: usize) -> String {
+fn get_full_line(_line_num: usize) -> String {
     unimplemented!()
 }
 
@@ -20,12 +20,7 @@ pub struct CompilerError {
     pub col: usize,
 }
 impl CompilerError {
-    pub fn new(
-        kind: ErrorKind,
-        filename: String,
-        pos: usize,
-    ) -> Self {
-
+    pub fn new(kind: ErrorKind, filename: String, pos: usize) -> Self {
         let (line_num, col) = find_line_and_col(&filename, pos);
         let line_string = get_full_line(line_num);
 
@@ -41,10 +36,7 @@ impl CompilerError {
     pub fn print(&self) {
         eprintln!(
             "{}:{}:{}: error: {}",
-            self.filename,
-            self.line_num,
-            self.col,
-            self.kind,
+            self.filename, self.line_num, self.col, self.kind,
         );
         // TODO: align these two lines better
         eprintln!("{:>5} | {}", self.line_num, self.line_string);
@@ -73,6 +65,5 @@ impl fmt::Display for ErrorKind {
               //     format!("Expected {} after `{}`", expected, flag)
               // }
         }
-        
     }
 }
