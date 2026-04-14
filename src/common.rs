@@ -38,6 +38,7 @@ pub enum Operator {
     Greater,
     Leq,
     Geq,
+    Assign,
 }
 impl Operator {
     pub fn is_unary(&self) -> bool {
@@ -76,6 +77,7 @@ impl Operator {
             Self::Greater => Some(BinaryOp::Greater),
             Self::Leq => Some(BinaryOp::Leq),
             Self::Geq => Some(BinaryOp::Geq),
+            Self::Assign => Some(BinaryOp::Assign),
             _ => None,
         }
     }
@@ -99,6 +101,7 @@ impl fmt::Display for Operator {
             Self::Greater => write!(f, ">"),
             Self::Leq => write!(f, "<="),
             Self::Geq => write!(f, ">="),
+            Self::Assign => write!(f, "="),
         }
     }
 }
@@ -136,6 +139,7 @@ pub enum BinaryOp {
     Greater,
     Leq,
     Geq,
+    Assign,
 }
 impl BinaryOp {
     pub fn precedence(&self) -> u32 {
@@ -153,6 +157,7 @@ impl BinaryOp {
             Self::Neq => 30,
             Self::LogicalAnd => 10,
             Self::LogicalOr => 5,
+            Self::Assign => 1,
         }
     }
 }
@@ -172,6 +177,7 @@ impl fmt::Display for BinaryOp {
             Self::Greater => write!(f, ">"),
             Self::Leq => write!(f, "<="),
             Self::Geq => write!(f, ">="),
+            Self::Assign => write!(f, "="),
         }
     }
 }

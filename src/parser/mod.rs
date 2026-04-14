@@ -1,4 +1,4 @@
-use crate::common::{Keyword, Operator};
+use crate::common::{BinaryOp, Keyword, Operator};
 use crate::lexer::Token;
 
 pub mod c_ast;
@@ -32,6 +32,10 @@ impl Parser {
         token
     }
 
+    fn advance(&mut self) {
+        self.pos += 1;
+    }
+
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
@@ -48,6 +52,21 @@ impl Parser {
         }
     }
 
+    fn expect_where<F>(&mut self, check_token: F, expected_desc: &str) -> Result<(), String>
+    where
+        F: Fn(&Token) -> bool,
+    {
+        let actual = self.take_token();
+
+        match actual {
+            Some(token) if check_token(token) => Ok(()),
+            _ => Err(format!(
+                "Syntax error: expected {}, found '{:?}'",
+                expected_desc, actual
+            )),
+        }
+    }
+
     fn parse_function(&mut self) -> Result<CFunction, String> {
         self.expect(Token::Keyword(Keyword::Int))?;
 
@@ -58,21 +77,61 @@ impl Parser {
         self.expect(Token::CloseParenthesis)?;
         self.expect(Token::OpenBrace)?;
 
-        let body = self.parse_statement()?;
+        let mut body = Vec::<CBlockItem>::new();
+        while let Some(token) = self.peek()
+            && *token != Token::CloseBrace
+        {
+            body.push(self.parse_block_item()?);
+        }
 
         self.expect(Token::CloseBrace)?;
 
         Ok(CFunction { name, body })
     }
 
+    fn parse_block_item(&mut self) -> Result<CBlockItem, String> {
+        if self.peek() == Some(&Token::Keyword(Keyword::Int)) {
+            self.advance(); // only int for now, so can skip
+            Ok(CBlockItem::Declaration(self.parse_declaration()?))
+        } else {
+            Ok(CBlockItem::Statement(self.parse_statement()?))
+        }
+    }
+
+    fn parse_declaration(&mut self) -> Result<CDeclaration, String> {
+        if let Ok(CFactor::Var(name)) = self.parse_factor() {
+            let exp = match self.peek() {
+                Some(Token::Operator(Operator::Assign)) => {
+                    self.advance();
+                    Some(self.parse_expression(0)?)
+                }
+                _ => None,
+            };
+            self.expect(Token::Semicolon)?;
+            Ok(CDeclaration(name, exp))
+        } else {
+            Err("Invalid variable name".to_string())
+        }
+    }
+
     fn parse_statement(&mut self) -> Result<CStatement, String> {
-        self.expect(Token::Keyword(Keyword::Return))?;
+        // self.expect(Token::Keyword(Keyword::Return))?;
+        if self.peek() == Some(&Token::Keyword(Keyword::Return)) {
+            self.advance();
+        }
 
-        let expression = self.parse_expression(0)?;
+        match self.peek() {
+            Some(Token::Semicolon) => {
+                self.advance();
+                Ok(CStatement::Null)
+            }
+            _ => {
+                let expression = self.parse_expression(0)?;
 
-        self.expect(Token::Semicolon)?;
-
-        Ok(CStatement::Return(expression))
+                self.expect(Token::Semicolon)?;
+                Ok(CStatement::Return(expression))
+            }
+        }
     }
 
     fn parse_identifier(&mut self) -> Result<String, String> {
@@ -89,9 +148,14 @@ impl Parser {
             && op.precedence() >= min_precedence
         {
             let op = op.to_binop().unwrap();
-            self.pos += 1;
-            let right = self.parse_expression(op.precedence() + 1)?;
-            left = CExpression::Binary(op, Box::new(left), Box::new(right));
+            self.advance();
+            if op == BinaryOp::Assign {
+                let right = self.parse_expression(op.precedence())?;
+                left = CExpression::Assign(Box::new(left), Box::new(right));
+            } else {
+                let right = self.parse_expression(op.precedence() + 1)?;
+                left = CExpression::Binary(op, Box::new(left), Box::new(right));
+            }
         }
 
         Ok(left)
@@ -111,7 +175,11 @@ impl Parser {
             Some(Token::OpenParenthesis) => {
                 let inner_exp = self.parse_expression(0)?;
                 self.expect(Token::CloseParenthesis)?;
-                Ok(CFactor::Expression(Box::new(inner_exp)))
+                Ok(CFactor::Expression(inner_exp))
+            }
+            Some(Token::Identifier(name)) => {
+                // TODO: borrow here
+                Ok(CFactor::Var(name.clone()))
             }
             other => Err(format!("Expected expression, found {:?}", other)),
         }

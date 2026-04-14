@@ -41,7 +41,8 @@ impl IRGenerator {
     fn translate_function(&mut self, c_function: CFunction) -> IRFunction {
         IRFunction {
             name: c_function.name,
-            instructions: self.statement_to_instructions(c_function.body),
+            // instructions: self.statement_to_instructions(c_function.body),
+            instructions: todo!(),
         }
     }
 
@@ -54,6 +55,12 @@ impl IRGenerator {
                 instructions.append(&mut exp_instructions);
                 instructions.push(IRInstruction::Return(return_val));
             }
+            CStatement::Expression(exp) => {
+                todo!()
+            }
+            CStatement::Null => {
+                todo!()
+            }
         }
         instructions
     }
@@ -62,6 +69,7 @@ impl IRGenerator {
         match c_expression {
             CExpression::Factor(f) => self.factor_to_instructions(*f),
             CExpression::Binary(op, exp1, exp2) => self.binop_to_instructions(op, *exp1, *exp2),
+            CExpression::Assign(exp1, exp2) => todo!(),
         }
     }
 
@@ -76,7 +84,8 @@ impl IRGenerator {
 
                 (dst, inner_instructions)
             }
-            CFactor::Expression(exp) => self.exp_to_instructions(*exp),
+            CFactor::Expression(exp) => self.exp_to_instructions(exp),
+            CFactor::Var(name) => todo!(),
         }
     }
 
