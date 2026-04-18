@@ -1,17 +1,25 @@
 use crate::common::{BinaryOp, Keyword, Operator};
 use crate::lexer::Token;
+use std::collections::HashMap;
 
 pub mod c_ast;
 use c_ast::*;
 
 pub struct Parser {
     tokens: Vec<Token>,
+    variable_map: HashMap<String, String>,
+    next_var_id: u32,
     pos: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser {
+            tokens,
+            variable_map: HashMap::new(),
+            next_var_id: 0,
+            pos: 0,
+        }
     }
 
     pub fn parse_program(&mut self) -> Result<CProgram, String> {
@@ -65,6 +73,12 @@ impl Parser {
                 expected_desc, actual
             )),
         }
+    }
+
+    fn create_unique_var(&mut self, var_name: &str) -> String {
+        let unique_name = format!("{}.{}", var_name, self.next_var_id);
+        self.next_var_id += 1;
+        unique_name
     }
 
     fn parse_function(&mut self) -> Result<CFunction, String> {
@@ -182,6 +196,67 @@ impl Parser {
                 Ok(CFactor::Var(name.clone()))
             }
             other => Err(format!("Expected expression, found {:?}", other)),
+        }
+    }
+
+    fn resolve_declaration(&mut self, declaration: CDeclaration) -> Result<CDeclaration, String> {
+        let (name, mut exp) = (declaration.0, declaration.1);
+        if self.variable_map.contains_key(&name) {
+            return Err(format!("Variable `{}` is declared twice", name));
+        }
+        let unique_name = self.create_unique_var(&name);
+        self.variable_map.insert(name, unique_name.clone());
+        if let Some(e) = exp {
+            exp = Some(self.resolve_expression(e)?);
+        }
+        Ok(CDeclaration(unique_name, exp))
+    }
+
+    // TODO: resolve in place instead of allocating new pointers
+    fn resolve_expression(&mut self, expression: CExpression) -> Result<CExpression, String> {
+        match expression {
+            CExpression::Assign(left, right) => match *left {
+                CExpression::Factor(ref f) if matches!(**f, CFactor::Var(_)) => {
+                    let left = self.resolve_expression(*left)?;
+                    let right = self.resolve_expression(*right)?;
+                    Ok(CExpression::Assign(Box::new(left), Box::new(right)))
+                }
+                other => Err(format!("Invalid lvalue `{}`", other)),
+            },
+            CExpression::Binary(op, left, right) => {
+                let left = self.resolve_expression(*left)?;
+                let right = self.resolve_expression(*right)?;
+                Ok(CExpression::Binary(op, Box::new(left), Box::new(right)))
+            }
+            CExpression::Factor(f) => {
+                let f = self.resolve_factor(*f)?;
+                Ok(CExpression::Factor(Box::new(f)))
+            }
+        }
+    }
+
+    fn resolve_factor(&mut self, factor: CFactor) -> Result<CFactor, String> {
+        match factor {
+            CFactor::Var(ref name) => match self.variable_map.get(name) {
+                Some(unique_name) => Ok(CFactor::Var(unique_name.clone())),
+                None => Err(format!("Undeclared variable `{}`", &name)),
+            },
+            CFactor::Unary(op, f2) => {
+                let f2 = self.resolve_factor(*f2)?;
+                Ok(CFactor::Unary(op, Box::new(f2)))
+            }
+            CFactor::Expression(exp) => Ok(CFactor::Expression(self.resolve_expression(exp)?)),
+            CFactor::Constant(_) => Ok(factor),
+        }
+    }
+
+    fn resolve_statement(&mut self, statement: CStatement) -> Result<CStatement, String> {
+        match statement {
+            CStatement::Return(exp) => Ok(CStatement::Return(self.resolve_expression(exp)?)),
+            CStatement::Expression(exp) => {
+                Ok(CStatement::Expression(self.resolve_expression(exp)?))
+            }
+            CStatement::Null => Ok(CStatement::Null),
         }
     }
 }
