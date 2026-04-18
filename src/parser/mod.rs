@@ -129,7 +129,6 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<CStatement, String> {
-        // self.expect(Token::Keyword(Keyword::Return))?;
         if self.peek() == Some(&Token::Keyword(Keyword::Return)) {
             self.advance();
         }
