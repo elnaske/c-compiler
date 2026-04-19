@@ -52,10 +52,10 @@ impl IRGenerator {
 
     fn translate_block_item(&mut self, c_block_item: CBlockItem) -> Vec<IRInstruction> {
         match c_block_item {
-            CBlockItem::Declaration(dec) => match dec.clone().get_expression() {
+            CBlockItem::Declaration(dec) => match dec.init {
                 Some(exp) => {
                     let (result, mut instructions) = self.exp_to_instructions(exp);
-                    let ir_var = IRVal::Var(dec.get_var().1.expect("IDK man"));
+                    let ir_var = IRVal::Var(dec.var.id.expect("IDK man"));
                     instructions.push(IRInstruction::Copy(result, ir_var));
                     instructions
                 }
@@ -88,19 +88,20 @@ impl IRGenerator {
             CExpression::Factor(f) => self.factor_to_instructions(*f),
             CExpression::Binary(op, exp1, exp2) => self.binop_to_instructions(op, *exp1, *exp2),
             CExpression::Assign(exp1, exp2) => {
-                // TODO: in place and iterator
-                match *exp1 {
-                    CExpression::Factor(f) if matches!(*f, CFactor::Var(_)) => {
-                        if let CFactor::Var(var) = *f {
-                            let (result, mut instructions) = self.exp_to_instructions(*exp2);
-                            let ir_var = IRVal::Var(var.1.expect("Variable unresolved"));
-                            instructions.push(IRInstruction::Copy(result, ir_var));
-                            (ir_var, instructions)
-                        } else {
-                            panic!("Unreachable")
-                        }
-                    }
-                    _ => panic!("Looks like variable resolution has a bug lol"),
+                if let CExpression::Factor(f) = *exp1
+                    && let CFactor::Var(var) = *f
+                {
+                    let (result, instructions) = self.exp_to_instructions(*exp2);
+                    let ir_var = IRVal::Var(var.id.expect("Variable unresolved"));
+                    (
+                        ir_var,
+                        instructions
+                            .into_iter()
+                            .chain(std::iter::once(IRInstruction::Copy(result, ir_var)))
+                            .collect(),
+                    )
+                } else {
+                    panic!("Looks like variable resolution has a bug lol");
                 }
             }
         }
@@ -118,9 +119,7 @@ impl IRGenerator {
                 (dst, inner_instructions)
             }
             CFactor::Expression(exp) => self.exp_to_instructions(exp),
-            CFactor::Var(var) => {
-                (IRVal::Var(var.1.unwrap()), vec![]) // TODO: update IRVal::Var def
-            }
+            CFactor::Var(var) => (IRVal::Var(var.id.unwrap()), vec![]),
         }
     }
 

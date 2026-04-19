@@ -7,7 +7,6 @@ use c_ast::*;
 
 pub struct Parser {
     tokens: Vec<Token>,
-    // variable_map: HashMap<String, String>,
     variable_map: HashMap<VarName, TempId>,
     next_var_id: u32,
     pos: usize,
@@ -87,7 +86,6 @@ impl Parser {
         self.expect(Token::CloseParenthesis)?;
         self.expect(Token::OpenBrace)?;
 
-        // TODO: iterator
         let mut body = Vec::<CBlockItem>::new();
         while let Some(token) = self.peek()
             && *token != Token::CloseBrace
@@ -119,17 +117,13 @@ impl Parser {
                 _ => None,
             };
             self.expect(Token::Semicolon)?;
-            Ok(CDeclaration(var, exp))
+            Ok(CDeclaration { var, init: exp })
         } else {
             Err("Invalid variable name".to_string())
         }
     }
 
     fn parse_statement(&mut self) -> Result<CStatement, String> {
-        // if self.peek() == Some(&Token::Keyword(Keyword::Return)) {
-        //     self.advance();
-        // }
-
         match self.peek() {
             Some(Token::Keyword(Keyword::Return)) => {
                 self.advance();
@@ -194,18 +188,15 @@ impl Parser {
                 self.expect(Token::CloseParenthesis)?;
                 Ok(CFactor::Expression(inner_exp))
             }
-            Some(Token::Identifier(name)) => {
-                // TODO: borrow here
-                Ok(CFactor::Var(CVar(VarName::from(name.clone()), None))) // TODO: resolve here
-            }
+            Some(Token::Identifier(name)) => Ok(CFactor::Var(CVar {
+                name: VarName::from(name.clone()),
+                id: None,
+            })),
             other => Err(format!("Expected expression, found {:?}", other)),
         }
     }
 
     fn create_unique_var(&mut self) -> TempId {
-        // let unique_name = format!("{}.{}", var_name, self.next_var_id);
-        // self.next_var_id += 1;
-        // unique_name
         let unique_var = TempId(self.next_var_id);
         self.next_var_id += 1;
         unique_var
@@ -215,8 +206,7 @@ impl Parser {
         self.next_var_id
     }
 
-    // TODO: do parsing and resolution in one pass
-    // TODO: remove unwrap()
+    // TODO: parse & resolve in one pass
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
         Ok(CProgram {
             function: CFunction {
@@ -239,19 +229,23 @@ impl Parser {
     }
 
     fn resolve_declaration(&mut self, declaration: CDeclaration) -> Result<CDeclaration, String> {
-        let (var, mut exp) = (declaration.0, declaration.1);
-        let var_name = var.0;
-        if self.variable_map.contains_key(&var_name) {
-            return Err(format!("Variable `{}` is declared twice", var_name));
+        let (var, mut exp) = (declaration.var, declaration.init);
+        if self.variable_map.contains_key(&var.name) {
+            return Err(format!("Variable `{}` is declared twice", var.name));
         }
-        // let unique_name = self.create_unique_var(&name);
         let id = self.create_unique_var();
-        self.variable_map.insert(var_name.clone(), id);
+        self.variable_map.insert(var.name.clone(), id);
         if let Some(e) = exp {
             exp = Some(self.resolve_expression(e)?);
         }
-        let unique_var = CVar(var_name, Some(id));
-        Ok(CDeclaration(unique_var, exp))
+        let unique_var = CVar {
+            name: var.name,
+            id: Some(id),
+        };
+        Ok(CDeclaration {
+            var: unique_var,
+            init: exp,
+        })
     }
 
     // TODO: resolve in place instead of allocating new pointers and cloning
@@ -279,13 +273,13 @@ impl Parser {
 
     fn resolve_factor(&mut self, factor: CFactor) -> Result<CFactor, String> {
         match factor {
-            CFactor::Var(ref var) => {
-                let var_name = var.get_name();
-                match self.variable_map.get(var_name) {
-                    Some(id) => Ok(CFactor::Var(CVar(var_name.clone(), Some(*id)))),
-                    None => Err(format!("Undeclared variable `{}`", &var.get_name())),
-                }
-            }
+            CFactor::Var(ref var) => match self.variable_map.get(&var.name) {
+                Some(id) => Ok(CFactor::Var(CVar {
+                    name: var.name.clone(),
+                    id: Some(*id),
+                })),
+                None => Err(format!("Undeclared variable `{}`", var.name)),
+            },
             CFactor::Unary(op, f2) => {
                 let f2 = self.resolve_factor(*f2)?;
                 Ok(CFactor::Unary(op, Box::new(f2)))

@@ -52,7 +52,7 @@ impl fmt::Display for CStatement {
 pub enum CExpression {
     Factor(Box<CFactor>),
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
-    Assign(Box<CExpression>, Box<CExpression>), // TODO: replace left with CVar when doing resolution and parsing in one pass
+    Assign(Box<CExpression>, Box<CExpression>),
 }
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -83,41 +83,30 @@ impl fmt::Display for CFactor {
     }
 }
 
-// TODO: use named structs instead of tuples
 #[derive(Debug, PartialEq, Clone)]
-pub struct CDeclaration(pub CVar, pub Option<CExpression>);
-impl CDeclaration {
-    pub fn get_expression(self) -> Option<CExpression> {
-        self.1
-    }
-    pub fn get_var(self) -> CVar {
-        self.0
-    }
+pub struct CDeclaration {
+    pub var: CVar,
+    pub init: Option<CExpression>,
 }
 impl fmt::Display for CDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self.1 {
-            Some(exp) => write!(f, "{}({})", self.0, exp),
-            None => write!(f, "{}()", self.0),
+        match &self.init {
+            Some(exp) => write!(f, "{}({})", self.var, exp),
+            None => write!(f, "{}()", self.var),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct CVar(pub VarName, pub Option<TempId>); // TODO: once variable resolution is moved to parsing pass, remove option
-impl CVar {
-    pub fn is_resolved(&self) -> bool {
-        self.1.is_some()
-    }
-    pub fn get_name(&self) -> &VarName {
-        &self.0
-    }
+pub struct CVar {
+    pub name: VarName,
+    pub id: Option<TempId>,
 }
 impl fmt::Display for CVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self.1 {
-            Some(id) => write!(f, "{}.{}", &self.0, id.0),
-            None => write!(f, "{}.?", &self.0),
+        match &self.id {
+            Some(id) => write!(f, "{}.{}", self.name, id.0),
+            None => write!(f, "{}.?", self.name),
         }
     }
 }

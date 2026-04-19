@@ -75,7 +75,6 @@ impl Config {
 }
 
 fn preprocess(infiles: &[String], outfile: &str) {
-    // TODO: multiple outfiles
     Command::new("gcc")
         .args(["-E", "-P", &infiles.join(" "), "-o", outfile])
         .output()
@@ -135,7 +134,6 @@ fn assemble_and_link(assembly_file: &str, outfile: &str) {
 }
 
 fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: better file handling (PathBuf?)
     let output = match cfg.outfile {
         Some(ref s) => s.clone(),
         None => "a.out".to_string(),
@@ -151,7 +149,7 @@ fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     if cfg.last_stage >= CompilerStage::CodeEmission {
         assemble_and_link(&assembly_output, &output);
-        // fs::remove_file(assembly_output).expect("failed to remove assembly file");
+        fs::remove_file(assembly_output).expect("failed to remove assembly file");
     }
     Ok(())
 }

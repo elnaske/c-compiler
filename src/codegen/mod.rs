@@ -20,7 +20,7 @@ impl AssemblyGenerator {
         let mut asm_program = self.translate_program(ir_program);
         let stack_size = self.replace_pseudo_registers(&mut asm_program);
         asm_program.function.instructions =
-            self.fix_instructions(&mut asm_program.function.instructions, stack_size);
+            self.fix_instructions(asm_program.function.instructions, stack_size);
         asm_program
     }
 
@@ -66,14 +66,13 @@ impl AssemblyGenerator {
         };
     }
 
-    // TODO: make asm_instructions not mut
     fn fix_instructions(
         &self,
-        asm_instructions: &mut Vec<AsmInstruction>,
+        asm_instructions: Vec<AsmInstruction>,
         stack_size: usize,
     ) -> Vec<AsmInstruction> {
         std::iter::once(AsmInstruction::AllocateStack(stack_size))
-            .chain(asm_instructions.drain(..).flat_map(|ins| ins.fix()))
+            .chain(asm_instructions.into_iter().flat_map(|ins| ins.fix()))
             .collect()
     }
 
