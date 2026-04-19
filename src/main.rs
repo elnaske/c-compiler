@@ -28,6 +28,8 @@ struct Config {
     infiles: Vec<String>,
     outfile: Option<String>,
     last_stage: CompilerStage,
+    print_tokens: bool,
+    print_ast: bool,
 }
 
 impl Config {
@@ -36,6 +38,8 @@ impl Config {
             infiles: Vec::new(),
             outfile: None,
             last_stage: CompilerStage::CodeEmission,
+            print_tokens: false,
+            print_ast: false,
         }
     }
 
@@ -58,6 +62,8 @@ impl Config {
                     "--validate" => cfg.last_stage = CompilerStage::VariableResolution,
                     "--tacky" => cfg.last_stage = CompilerStage::IR,
                     "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
+                    "--print_tokens" => cfg.print_tokens = true,
+                    "--print_ast" => cfg.print_ast = true,
                     other => return Err(format!("illegal flag `{other}`")),
                 }
             } else {
@@ -86,30 +92,37 @@ fn compile(
     // TODO: see if there is a way to avoid cloning filename
     let tokens = Lexer::new(code.as_bytes(), infile.clone()).get_tokens();
 
+    if cfg.print_tokens {
+        println!("{:?}", tokens)
+    }
+
     if cfg.last_stage >= CompilerStage::Parser {
         let mut parser = Parser::new(tokens);
         let mut c_program = parser.parse_program()?;
 
         if cfg.last_stage >= CompilerStage::VariableResolution {
             c_program = parser.resolve_variables(c_program)?;
-        
-        if cfg.last_stage >= CompilerStage::IR {
-            let ir_program = IRGenerator::new().c_to_ir(c_program);
 
-            if cfg.last_stage >= CompilerStage::CodeGen {
-                let codegen = AssemblyGenerator::new();
-                let asm_program = codegen.ir_to_asm(ir_program);
-                let asm = codegen.generate_asm(asm_program);
+            if cfg.print_ast {
+                println!("{}", c_program);
+            }
 
-                if cfg.last_stage >= CompilerStage::CodeEmission {
-                    let mut file = fs::File::create(outfile).expect("Failed to create output file");
-                    write!(file, "{}", asm).expect("Failed to write to output file");
+            if cfg.last_stage >= CompilerStage::IR {
+                let ir_program = IRGenerator::new(parser.get_next_var_id()).c_to_ir(c_program);
+
+                if cfg.last_stage >= CompilerStage::CodeGen {
+                    let codegen = AssemblyGenerator::new();
+                    let asm_program = codegen.ir_to_asm(ir_program);
+                    let asm = codegen.generate_asm(asm_program);
+
+                    if cfg.last_stage >= CompilerStage::CodeEmission {
+                        let mut file =
+                            fs::File::create(outfile).expect("Failed to create output file");
+                        write!(file, "{}", asm).expect("Failed to write to output file");
+                    }
                 }
             }
         }
-
-        }
-
     }
     Ok(())
 }

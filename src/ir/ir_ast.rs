@@ -7,7 +7,7 @@ use crate::codegen::asm_ast::{
     AsmRegister::{self, *},
     AsmUnaryOp,
 };
-use crate::common::{BinaryOp, UnaryOp};
+use crate::common::{BinaryOp, TempId, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub struct IRProgram {
@@ -130,9 +130,6 @@ impl IRVal {
         }
     }
 }
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct TempId(pub u32);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Label(pub u32);

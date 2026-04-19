@@ -1,3 +1,4 @@
+use crate::common::TempId;
 use crate::ir::ir_ast::*;
 use std::collections::HashMap;
 use std::vec;

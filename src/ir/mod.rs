@@ -1,5 +1,5 @@
 pub mod ir_ast;
-use crate::common::BinaryOp;
+use crate::common::{BinaryOp, TempId};
 use crate::parser::c_ast::*;
 use ir_ast::*;
 
@@ -9,13 +9,13 @@ pub struct IRGenerator {
 }
 impl Default for IRGenerator {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 impl IRGenerator {
-    pub fn new() -> Self {
+    pub fn new(next_var_id: u32) -> Self {
         IRGenerator {
-            next_var_id: 0,
+            next_var_id,
             next_label_id: 0,
         }
     }
@@ -41,8 +41,27 @@ impl IRGenerator {
     fn translate_function(&mut self, c_function: CFunction) -> IRFunction {
         IRFunction {
             name: c_function.name,
-            // instructions: self.statement_to_instructions(c_function.body),
-            instructions: todo!(),
+            instructions: c_function
+                .body
+                .into_iter()
+                .flat_map(|b| self.translate_block_item(b))
+                .chain(std::iter::once(IRInstruction::Return(IRVal::Constant(0)))) // append return 0 to the end to avoid undefined behavior
+                .collect(),
+        }
+    }
+
+    fn translate_block_item(&mut self, c_block_item: CBlockItem) -> Vec<IRInstruction> {
+        match c_block_item {
+            CBlockItem::Declaration(dec) => match dec.clone().get_expression() {
+                Some(exp) => {
+                    let (result, mut instructions) = self.exp_to_instructions(exp);
+                    let ir_var = IRVal::Var(dec.get_var().1.expect("IDK man"));
+                    instructions.push(IRInstruction::Copy(result, ir_var));
+                    instructions
+                }
+                None => vec![],
+            },
+            CBlockItem::Statement(stmnt) => self.statement_to_instructions(stmnt),
         }
     }
 
@@ -56,11 +75,10 @@ impl IRGenerator {
                 instructions.push(IRInstruction::Return(return_val));
             }
             CStatement::Expression(exp) => {
-                todo!()
+                let (_, mut exp_instructions) = self.exp_to_instructions(exp);
+                instructions.append(&mut exp_instructions);
             }
-            CStatement::Null => {
-                todo!()
-            }
+            CStatement::Null => (),
         }
         instructions
     }
@@ -69,7 +87,22 @@ impl IRGenerator {
         match c_expression {
             CExpression::Factor(f) => self.factor_to_instructions(*f),
             CExpression::Binary(op, exp1, exp2) => self.binop_to_instructions(op, *exp1, *exp2),
-            CExpression::Assign(exp1, exp2) => todo!(),
+            CExpression::Assign(exp1, exp2) => {
+                // TODO: in place and iterator
+                match *exp1 {
+                    CExpression::Factor(f) if matches!(*f, CFactor::Var(_)) => {
+                        if let CFactor::Var(var) = *f {
+                            let (result, mut instructions) = self.exp_to_instructions(*exp2);
+                            let ir_var = IRVal::Var(var.1.expect("Variable unresolved"));
+                            instructions.push(IRInstruction::Copy(result, ir_var));
+                            (ir_var, instructions)
+                        } else {
+                            panic!("Unreachable")
+                        }
+                    }
+                    _ => panic!("Looks like variable resolution has a bug lol"),
+                }
+            }
         }
     }
 
@@ -85,7 +118,9 @@ impl IRGenerator {
                 (dst, inner_instructions)
             }
             CFactor::Expression(exp) => self.exp_to_instructions(exp),
-            CFactor::Var(name) => todo!(),
+            CFactor::Var(var) => {
+                (IRVal::Var(var.1.unwrap()), vec![]) // TODO: update IRVal::Var def
+            }
         }
     }
 

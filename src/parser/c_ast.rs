@@ -1,6 +1,6 @@
 use std::fmt::{self, Formatter};
 
-use crate::common::{BinaryOp, UnaryOp};
+use crate::common::{BinaryOp, TempId, UnaryOp, VarName};
 
 #[derive(Debug, PartialEq)]
 pub struct CProgram {
@@ -48,11 +48,11 @@ impl fmt::Display for CStatement {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CExpression {
     Factor(Box<CFactor>),
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
-    Assign(Box<CExpression>, Box<CExpression>),
+    Assign(Box<CExpression>, Box<CExpression>), // TODO: replace left with CVar when doing resolution and parsing in one pass
 }
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -64,12 +64,12 @@ impl fmt::Display for CExpression {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CFactor {
     Constant(i32),
     Unary(UnaryOp, Box<CFactor>),
     Expression(CExpression),
-    Var(String),
+    Var(CVar),
 }
 
 impl fmt::Display for CFactor {
@@ -83,13 +83,41 @@ impl fmt::Display for CFactor {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct CDeclaration(pub String, pub Option<CExpression>);
+// TODO: use named structs instead of tuples
+#[derive(Debug, PartialEq, Clone)]
+pub struct CDeclaration(pub CVar, pub Option<CExpression>);
+impl CDeclaration {
+    pub fn get_expression(self) -> Option<CExpression> {
+        self.1
+    }
+    pub fn get_var(self) -> CVar {
+        self.0
+    }
+}
 impl fmt::Display for CDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match &self.1 {
             Some(exp) => write!(f, "{}({})", self.0, exp),
             None => write!(f, "{}()", self.0),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct CVar(pub VarName, pub Option<TempId>); // TODO: once variable resolution is moved to parsing pass, remove option
+impl CVar {
+    pub fn is_resolved(&self) -> bool {
+        self.1.is_some()
+    }
+    pub fn get_name(&self) -> &VarName {
+        &self.0
+    }
+}
+impl fmt::Display for CVar {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self.1 {
+            Some(id) => write!(f, "{}.{}", &self.0, id.0),
+            None => write!(f, "{}.?", &self.0),
         }
     }
 }

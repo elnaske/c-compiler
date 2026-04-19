@@ -1,4 +1,4 @@
-use crate::common::{BinaryOp, Keyword, Operator};
+use crate::common::{BinaryOp, Keyword, Operator, TempId, VarName};
 use crate::lexer::Token;
 use std::collections::HashMap;
 
@@ -7,7 +7,8 @@ use c_ast::*;
 
 pub struct Parser {
     tokens: Vec<Token>,
-    variable_map: HashMap<String, String>,
+    // variable_map: HashMap<String, String>,
+    variable_map: HashMap<VarName, TempId>,
     next_var_id: u32,
     pos: usize,
 }
@@ -60,6 +61,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     fn expect_where<F>(&mut self, check_token: F, expected_desc: &str) -> Result<(), String>
     where
         F: Fn(&Token) -> bool,
@@ -73,12 +75,6 @@ impl Parser {
                 expected_desc, actual
             )),
         }
-    }
-
-    fn create_unique_var(&mut self, var_name: &str) -> String {
-        let unique_name = format!("{}.{}", var_name, self.next_var_id);
-        self.next_var_id += 1;
-        unique_name
     }
 
     fn parse_function(&mut self) -> Result<CFunction, String> {
@@ -114,7 +110,7 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self) -> Result<CDeclaration, String> {
-        if let Ok(CFactor::Var(name)) = self.parse_factor() {
+        if let Ok(CFactor::Var(var)) = self.parse_factor() {
             let exp = match self.peek() {
                 Some(Token::Operator(Operator::Assign)) => {
                     self.advance();
@@ -123,18 +119,25 @@ impl Parser {
                 _ => None,
             };
             self.expect(Token::Semicolon)?;
-            Ok(CDeclaration(name, exp))
+            Ok(CDeclaration(var, exp))
         } else {
             Err("Invalid variable name".to_string())
         }
     }
 
     fn parse_statement(&mut self) -> Result<CStatement, String> {
-        if self.peek() == Some(&Token::Keyword(Keyword::Return)) {
-            self.advance();
-        }
+        // if self.peek() == Some(&Token::Keyword(Keyword::Return)) {
+        //     self.advance();
+        // }
 
         match self.peek() {
+            Some(Token::Keyword(Keyword::Return)) => {
+                self.advance();
+                let expression = self.parse_expression(0)?;
+
+                self.expect(Token::Semicolon)?;
+                Ok(CStatement::Return(expression))
+            }
             Some(Token::Semicolon) => {
                 self.advance();
                 Ok(CStatement::Null)
@@ -143,7 +146,7 @@ impl Parser {
                 let expression = self.parse_expression(0)?;
 
                 self.expect(Token::Semicolon)?;
-                Ok(CStatement::Return(expression))
+                Ok(CStatement::Expression(expression))
             }
         }
     }
@@ -193,10 +196,23 @@ impl Parser {
             }
             Some(Token::Identifier(name)) => {
                 // TODO: borrow here
-                Ok(CFactor::Var(name.clone()))
+                Ok(CFactor::Var(CVar(VarName::from(name.clone()), None))) // TODO: resolve here
             }
             other => Err(format!("Expected expression, found {:?}", other)),
         }
+    }
+
+    fn create_unique_var(&mut self) -> TempId {
+        // let unique_name = format!("{}.{}", var_name, self.next_var_id);
+        // self.next_var_id += 1;
+        // unique_name
+        let unique_var = TempId(self.next_var_id);
+        self.next_var_id += 1;
+        unique_var
+    }
+
+    pub fn get_next_var_id(self) -> u32 {
+        self.next_var_id
     }
 
     // TODO: do parsing and resolution in one pass
@@ -223,19 +239,22 @@ impl Parser {
     }
 
     fn resolve_declaration(&mut self, declaration: CDeclaration) -> Result<CDeclaration, String> {
-        let (name, mut exp) = (declaration.0, declaration.1);
-        if self.variable_map.contains_key(&name) {
-            return Err(format!("Variable `{}` is declared twice", name));
+        let (var, mut exp) = (declaration.0, declaration.1);
+        let var_name = var.0;
+        if self.variable_map.contains_key(&var_name) {
+            return Err(format!("Variable `{}` is declared twice", var_name));
         }
-        let unique_name = self.create_unique_var(&name);
-        self.variable_map.insert(name, unique_name.clone());
+        // let unique_name = self.create_unique_var(&name);
+        let id = self.create_unique_var();
+        self.variable_map.insert(var_name.clone(), id);
         if let Some(e) = exp {
             exp = Some(self.resolve_expression(e)?);
         }
-        Ok(CDeclaration(unique_name, exp))
+        let unique_var = CVar(var_name, Some(id));
+        Ok(CDeclaration(unique_var, exp))
     }
 
-    // TODO: resolve in place instead of allocating new pointers
+    // TODO: resolve in place instead of allocating new pointers and cloning
     fn resolve_expression(&mut self, expression: CExpression) -> Result<CExpression, String> {
         match expression {
             CExpression::Assign(left, right) => match *left {
@@ -260,10 +279,13 @@ impl Parser {
 
     fn resolve_factor(&mut self, factor: CFactor) -> Result<CFactor, String> {
         match factor {
-            CFactor::Var(ref name) => match self.variable_map.get(name) {
-                Some(unique_name) => Ok(CFactor::Var(unique_name.clone())),
-                None => Err(format!("Undeclared variable `{}`", &name)),
-            },
+            CFactor::Var(ref var) => {
+                let var_name = var.get_name();
+                match self.variable_map.get(var_name) {
+                    Some(id) => Ok(CFactor::Var(CVar(var_name.clone(), Some(*id)))),
+                    None => Err(format!("Undeclared variable `{}`", &var.get_name())),
+                }
+            }
             CFactor::Unary(op, f2) => {
                 let f2 = self.resolve_factor(*f2)?;
                 Ok(CFactor::Unary(op, Box::new(f2)))
