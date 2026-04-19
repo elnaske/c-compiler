@@ -3,6 +3,7 @@ use crate::errors::{CompilerError, ErrorKind};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
+    // TODO: &str instead of String
     Identifier(String),
     Constant(i32),
     Keyword(Keyword),
@@ -123,7 +124,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token::Operator(Operator::Eq))
                     }
-                    _ => todo!("assignment"),
+                    _ => Ok(Token::Operator(Operator::Assign)),
                 }
             }
             Some(b'<') => {
@@ -201,6 +202,7 @@ impl<'a> Lexer<'a> {
             Token::Keyword(keyword)
         } else {
             Token::Identifier(
+                // TODO: &str instead of String (+ lifetime annotation)
                 str::from_utf8(&self.input[start..self.pos])
                     .expect("Invalid UTF-8 sequence")
                     .to_string(),

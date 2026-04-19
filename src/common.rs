@@ -1,4 +1,5 @@
 use std::fmt::{self, Formatter};
+use std::ops::Deref;
 
 #[derive(Debug, PartialEq)]
 pub enum Keyword {
@@ -38,6 +39,7 @@ pub enum Operator {
     Greater,
     Leq,
     Geq,
+    Assign,
 }
 impl Operator {
     pub fn is_unary(&self) -> bool {
@@ -76,6 +78,7 @@ impl Operator {
             Self::Greater => Some(BinaryOp::Greater),
             Self::Leq => Some(BinaryOp::Leq),
             Self::Geq => Some(BinaryOp::Geq),
+            Self::Assign => Some(BinaryOp::Assign),
             _ => None,
         }
     }
@@ -99,6 +102,7 @@ impl fmt::Display for Operator {
             Self::Greater => write!(f, ">"),
             Self::Leq => write!(f, "<="),
             Self::Geq => write!(f, ">="),
+            Self::Assign => write!(f, "="),
         }
     }
 }
@@ -136,6 +140,7 @@ pub enum BinaryOp {
     Greater,
     Leq,
     Geq,
+    Assign,
 }
 impl BinaryOp {
     pub fn precedence(&self) -> u32 {
@@ -153,6 +158,7 @@ impl BinaryOp {
             Self::Neq => 30,
             Self::LogicalAnd => 10,
             Self::LogicalOr => 5,
+            Self::Assign => 1,
         }
     }
 }
@@ -172,6 +178,29 @@ impl fmt::Display for BinaryOp {
             Self::Greater => write!(f, ">"),
             Self::Leq => write!(f, "<="),
             Self::Geq => write!(f, ">="),
+            Self::Assign => write!(f, "="),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct TempId(pub u32);
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct VarName(pub String);
+impl Deref for VarName {
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl fmt::Display for VarName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+impl From<String> for VarName {
+    fn from(s: String) -> Self {
+        VarName(s)
     }
 }

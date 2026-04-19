@@ -1,4 +1,5 @@
-use crate::ir::ir_ast::{Label, TempId};
+use crate::common::TempId;
+use crate::ir::ir_ast::Label;
 use std::fmt;
 
 #[derive(Debug, PartialEq)]

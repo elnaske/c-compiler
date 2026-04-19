@@ -11,7 +11,7 @@ A minimal compiler for a subset of C written in Rust.
 - [x] Unary operators
 - [x] Binary operators
 - [x] Logical and relational operators
-- [ ] Local variables
+- [x] Local variables
 - [ ] If statements and conditional expressions
 - [ ] ...
 

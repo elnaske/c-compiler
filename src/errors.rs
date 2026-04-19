@@ -38,7 +38,6 @@ impl CompilerError {
             "{}:{}:{}: error: {}",
             self.filename, self.line_num, self.col, self.kind,
         );
-        // TODO: align these two lines better
         eprintln!("{:>5} | {}", self.line_num, self.line_string);
         eprintln!("{:>5} | {:>width$}", "", "^", width = self.col);
     }
