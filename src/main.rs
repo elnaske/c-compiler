@@ -18,6 +18,7 @@ use ir::IRGenerator;
 enum CompilerStage {
     Lexer,
     Parser,
+    VariableResolution,
     IR,
     CodeGen,
     CodeEmission,
@@ -53,8 +54,9 @@ impl Config {
                         }
                     }
                     "--lex" => cfg.last_stage = CompilerStage::Lexer,
-                    "--tacky" => cfg.last_stage = CompilerStage::IR,
                     "--parse" => cfg.last_stage = CompilerStage::Parser,
+                    "--validate" => cfg.last_stage = CompilerStage::VariableResolution,
+                    "--tacky" => cfg.last_stage = CompilerStage::IR,
                     "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
                     other => return Err(format!("illegal flag `{other}`")),
                 }
@@ -85,8 +87,12 @@ fn compile(
     let tokens = Lexer::new(code.as_bytes(), infile.clone()).get_tokens();
 
     if cfg.last_stage >= CompilerStage::Parser {
-        let c_program = Parser::new(tokens).parse_program()?;
+        let mut parser = Parser::new(tokens);
+        let mut c_program = parser.parse_program()?;
 
+        if cfg.last_stage >= CompilerStage::VariableResolution {
+            c_program = parser.resolve_variables(c_program)?;
+        
         if cfg.last_stage >= CompilerStage::IR {
             let ir_program = IRGenerator::new().c_to_ir(c_program);
 
@@ -101,6 +107,9 @@ fn compile(
                 }
             }
         }
+
+        }
+
     }
     Ok(())
 }

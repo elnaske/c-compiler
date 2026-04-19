@@ -91,6 +91,7 @@ impl Parser {
         self.expect(Token::CloseParenthesis)?;
         self.expect(Token::OpenBrace)?;
 
+        // TODO: iterator
         let mut body = Vec::<CBlockItem>::new();
         while let Some(token) = self.peek()
             && *token != Token::CloseBrace
@@ -196,6 +197,29 @@ impl Parser {
             }
             other => Err(format!("Expected expression, found {:?}", other)),
         }
+    }
+
+    // TODO: do parsing and resolution in one pass
+    // TODO: remove unwrap()
+    pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
+        Ok(CProgram {
+            function: CFunction {
+                name: program.function.name,
+                body: program
+                    .function
+                    .body
+                    .into_iter()
+                    .map(|block| match block {
+                        CBlockItem::Declaration(dec) => {
+                            CBlockItem::Declaration(self.resolve_declaration(dec).unwrap())
+                        }
+                        CBlockItem::Statement(stmnt) => {
+                            CBlockItem::Statement(self.resolve_statement(stmnt).unwrap())
+                        }
+                    })
+                    .collect(),
+            },
+        })
     }
 
     fn resolve_declaration(&mut self, declaration: CDeclaration) -> Result<CDeclaration, String> {
