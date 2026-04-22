@@ -79,7 +79,29 @@ impl IRGenerator {
                 instructions.append(&mut exp_instructions);
             }
             CStatement::If(cond, then, else_) => {
-                todo!()
+                let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
+                let mut then_instructions = self.statement_to_instructions(*then);
+                let end_label = self.create_jump_label();
+
+                instructions.append(&mut cond_instructions);
+
+                match else_ {
+                    Some(else_stmnt) => {
+                        let mut else_instructions = self.statement_to_instructions(*else_stmnt);
+                        let else_label = self.create_jump_label();
+
+                        instructions.push(IRInstruction::JumpIfZero(cond_val, else_label));
+                        instructions.append(&mut then_instructions);
+                        instructions.push(IRInstruction::Jump(end_label));
+                        instructions.push(IRInstruction::Label(else_label));
+                        instructions.append(&mut else_instructions);
+                    }
+                    None => {
+                        instructions.push(IRInstruction::JumpIfZero(cond_val, end_label));
+                        instructions.append(&mut then_instructions);
+                    }
+                }
+                instructions.push(IRInstruction::Label(end_label));
             }
             CStatement::Null => (),
         }
@@ -108,7 +130,27 @@ impl IRGenerator {
                 }
             }
             CExpression::Conditional(cond, exp1, exp2) => {
-                todo!()
+                let mut instructions = Vec::new();
+                let (cond_val, mut cond_instructions) = self.exp_to_instructions(*cond);
+                let else_label = self.create_jump_label();
+                let end_label = self.create_jump_label();
+                let res = IRVal::Var(self.create_temp_var());
+
+                instructions.append(&mut cond_instructions);
+
+                instructions.push(IRInstruction::JumpIfZero(cond_val, else_label));
+                let (then_val, mut then_instructions) = self.exp_to_instructions(*exp1);
+                instructions.append(&mut then_instructions);
+                instructions.push(IRInstruction::Copy(then_val, res));
+                instructions.push(IRInstruction::Jump(end_label));
+
+                instructions.push(IRInstruction::Label(else_label));
+                let (else_val, mut else_instructions) = self.exp_to_instructions(*exp2);
+                instructions.append(&mut else_instructions);
+                instructions.push(IRInstruction::Copy(else_val, res));
+                instructions.push(IRInstruction::Label(end_label));
+
+                (res, instructions)
             }
         }
     }
