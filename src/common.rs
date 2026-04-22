@@ -5,6 +5,8 @@ use std::ops::Deref;
 pub enum Keyword {
     Int,
     Void,
+    If,
+    Else,
     Return,
 }
 
@@ -13,6 +15,8 @@ impl Keyword {
         match s {
             b"int" => Some(Keyword::Int),
             b"void" => Some(Keyword::Void),
+            b"if" => Some(Keyword::If),
+            b"else" => Some(Keyword::Else),
             b"return" => Some(Keyword::Return),
             _ => None,
         }
@@ -40,6 +44,7 @@ pub enum Operator {
     Leq,
     Geq,
     Assign,
+    Conditional,
 }
 impl Operator {
     pub fn is_unary(&self) -> bool {
@@ -79,6 +84,7 @@ impl Operator {
             Self::Leq => Some(BinaryOp::Leq),
             Self::Geq => Some(BinaryOp::Geq),
             Self::Assign => Some(BinaryOp::Assign),
+            Self::Conditional => Some(BinaryOp::Conditional),
             _ => None,
         }
     }
@@ -103,6 +109,7 @@ impl fmt::Display for Operator {
             Self::Leq => write!(f, "<="),
             Self::Geq => write!(f, ">="),
             Self::Assign => write!(f, "="),
+            Self::Conditional => write!(f, "?"),
         }
     }
 }
@@ -141,6 +148,7 @@ pub enum BinaryOp {
     Leq,
     Geq,
     Assign,
+    Conditional, // ternary, but who cares
 }
 impl BinaryOp {
     pub fn precedence(&self) -> u32 {
@@ -158,6 +166,7 @@ impl BinaryOp {
             Self::Neq => 30,
             Self::LogicalAnd => 10,
             Self::LogicalOr => 5,
+            Self::Conditional => 3,
             Self::Assign => 1,
         }
     }
@@ -179,6 +188,7 @@ impl fmt::Display for BinaryOp {
             Self::Leq => write!(f, "<="),
             Self::Geq => write!(f, ">="),
             Self::Assign => write!(f, "="),
+            Self::Conditional => write!(f, "?"),
         }
     }
 }

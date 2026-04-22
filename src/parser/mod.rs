@@ -132,6 +132,22 @@ impl Parser {
                 self.expect(Token::Semicolon)?;
                 Ok(CStatement::Return(expression))
             }
+            Some(Token::Keyword(Keyword::If)) => {
+                self.advance();
+                self.expect(Token::OpenParenthesis)?;
+                let condition = self.parse_expression(0)?;
+                self.expect(Token::CloseParenthesis)?;
+                let statement = Box::new(self.parse_statement()?);
+
+                let else_statement = match self.peek() {
+                    Some(&Token::Keyword(Keyword::Else)) => {
+                        self.advance();
+                        Some(Box::new(self.parse_statement()?))
+                    }
+                    _ => None,
+                };
+                Ok(CStatement::If(condition, statement, else_statement))
+            }
             Some(Token::Semicolon) => {
                 self.advance();
                 Ok(CStatement::Null)
@@ -160,12 +176,25 @@ impl Parser {
         {
             let op = op.to_binop().unwrap();
             self.advance();
-            if op == BinaryOp::Assign {
-                let right = self.parse_expression(op.precedence())?;
-                left = CExpression::Assign(Box::new(left), Box::new(right));
-            } else {
-                let right = self.parse_expression(op.precedence() + 1)?;
-                left = CExpression::Binary(op, Box::new(left), Box::new(right));
+            match op {
+                BinaryOp::Assign => {
+                    let right = self.parse_expression(op.precedence())?;
+                    left = CExpression::Assign(Box::new(left), Box::new(right));
+                }
+                BinaryOp::Conditional => {
+                    let middle = {
+                        let exp = self.parse_expression(0)?;
+                        self.expect(Token::Colon)?;
+                        exp
+                    };
+                    let right = self.parse_expression(op.precedence())?;
+                    left =
+                        CExpression::Conditional(Box::new(left), Box::new(middle), Box::new(right));
+                }
+                _ => {
+                    let right = self.parse_expression(op.precedence() + 1)?;
+                    left = CExpression::Binary(op, Box::new(left), Box::new(right));
+                }
             }
         }
 
@@ -268,6 +297,16 @@ impl Parser {
                 let f = self.resolve_factor(*f)?;
                 Ok(CExpression::Factor(Box::new(f)))
             }
+            CExpression::Conditional(cond, exp1, exp2) => {
+                let cond = self.resolve_expression(*cond)?;
+                let exp1 = self.resolve_expression(*exp1)?;
+                let exp2 = self.resolve_expression(*exp2)?;
+                Ok(CExpression::Conditional(
+                    Box::new(cond),
+                    Box::new(exp1),
+                    Box::new(exp2),
+                ))
+            }
         }
     }
 
@@ -294,6 +333,14 @@ impl Parser {
             CStatement::Return(exp) => Ok(CStatement::Return(self.resolve_expression(exp)?)),
             CStatement::Expression(exp) => {
                 Ok(CStatement::Expression(self.resolve_expression(exp)?))
+            }
+            CStatement::If(cond, then, else_) => {
+                let then = Box::new(self.resolve_statement(*then)?);
+                let else_ = match else_ {
+                    Some(else_stmnt) => Some(Box::new(self.resolve_statement(*else_stmnt)?)),
+                    None => None,
+                };
+                Ok(CStatement::If(self.resolve_expression(cond)?, then, else_))
             }
             CStatement::Null => Ok(CStatement::Null),
         }

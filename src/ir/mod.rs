@@ -78,6 +78,9 @@ impl IRGenerator {
                 let (_, mut exp_instructions) = self.exp_to_instructions(exp);
                 instructions.append(&mut exp_instructions);
             }
+            CStatement::If(cond, then, else_) => {
+                todo!()
+            }
             CStatement::Null => (),
         }
         instructions
@@ -103,6 +106,9 @@ impl IRGenerator {
                 } else {
                     panic!("Looks like variable resolution has a bug lol");
                 }
+            }
+            CExpression::Conditional(cond, exp1, exp2) => {
+                todo!()
             }
         }
     }

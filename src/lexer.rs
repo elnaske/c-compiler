@@ -13,6 +13,7 @@ pub enum Token {
     OpenBrace,
     CloseBrace,
     Semicolon,
+    Colon,
     Eof,
 }
 
@@ -116,6 +117,14 @@ impl<'a> Lexer<'a> {
                     }
                     _ => todo!("bitwise or"),
                 }
+            }
+            Some(b'?') => {
+                self.advance();
+                Ok(Token::Operator(Operator::Conditional))
+            }
+            Some(b':') => {
+                self.advance();
+                Ok(Token::Colon)
             }
             Some(b'=') => {
                 self.advance();
