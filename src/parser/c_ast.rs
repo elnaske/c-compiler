@@ -29,6 +29,7 @@ impl fmt::Display for CFunction {
 pub enum CStatement {
     Return(CExpression),
     Expression(CExpression),
+    If(CExpression, Box<CStatement>, Option<Box<CStatement>>), // condition, then, else
     Null,
 }
 
@@ -41,6 +42,10 @@ impl fmt::Display for CStatement {
             Self::Expression(exp) => {
                 write!(f, "Exp({})", exp)
             }
+            Self::If(cond, then, else_) => match else_ {
+                Some(stmnt) => write!(f, "If(cond={}, then={}, else={}", cond, then, stmnt),
+                None => write!(f, "If(cond={}, then={}", cond, then),
+            },
             Self::Null => {
                 write!(f, "NULL")
             }
@@ -53,13 +58,17 @@ pub enum CExpression {
     Factor(Box<CFactor>),
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
     Assign(Box<CExpression>, Box<CExpression>),
+    Conditional(Box<CExpression>, Box<CExpression>, Box<CExpression>), // cond, then, else
 }
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Factor(fac) => write!(f, "Factor({})", fac),
-            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, *exp1, *exp2),
-            Self::Assign(exp1, exp2) => write!(f, "Assign({}, {})", exp1, exp2),
+            Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, exp1, exp2),
+            Self::Assign(exp1, exp2) => write!(f, "Assign({} = {})", exp1, exp2),
+            Self::Conditional(cond, exp1, exp2) => {
+                write!(f, "Conditional({} ? {} : {})", cond, exp1, exp2)
+            }
         }
     }
 }

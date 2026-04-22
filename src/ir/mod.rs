@@ -66,21 +66,42 @@ impl IRGenerator {
     }
 
     fn statement_to_instructions(&mut self, c_statement: CStatement) -> Vec<IRInstruction> {
-        let mut instructions = Vec::<IRInstruction>::new();
-
         match c_statement {
             CStatement::Return(exp) => {
-                let (return_val, mut exp_instructions) = self.exp_to_instructions(exp);
-                instructions.append(&mut exp_instructions);
+                let (return_val, mut instructions) = self.exp_to_instructions(exp);
                 instructions.push(IRInstruction::Return(return_val));
+                instructions
             }
             CStatement::Expression(exp) => {
-                let (_, mut exp_instructions) = self.exp_to_instructions(exp);
-                instructions.append(&mut exp_instructions);
+                let (_, instructions) = self.exp_to_instructions(exp);
+                instructions
             }
-            CStatement::Null => (),
+            CStatement::If(cond, then, else_) => {
+                let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
+                let mut then_instructions = self.statement_to_instructions(*then);
+                let end_label = self.create_jump_label();
+
+                match else_ {
+                    Some(else_stmnt) => {
+                        let mut else_instructions = self.statement_to_instructions(*else_stmnt);
+                        let else_label = self.create_jump_label();
+
+                        cond_instructions.push(IRInstruction::JumpIfZero(cond_val, else_label));
+                        cond_instructions.append(&mut then_instructions);
+                        cond_instructions.push(IRInstruction::Jump(end_label));
+                        cond_instructions.push(IRInstruction::Label(else_label));
+                        cond_instructions.append(&mut else_instructions);
+                    }
+                    None => {
+                        cond_instructions.push(IRInstruction::JumpIfZero(cond_val, end_label));
+                        cond_instructions.append(&mut then_instructions);
+                    }
+                }
+                cond_instructions.push(IRInstruction::Label(end_label));
+                cond_instructions
+            }
+            CStatement::Null => vec![],
         }
-        instructions
     }
 
     fn exp_to_instructions(&mut self, c_expression: CExpression) -> (IRVal, Vec<IRInstruction>) {
@@ -103,6 +124,39 @@ impl IRGenerator {
                 } else {
                     panic!("Looks like variable resolution has a bug lol");
                 }
+            }
+            CExpression::Conditional(cond, exp1, exp2) => {
+                let res = IRVal::Var(self.create_temp_var());
+
+                let instructions = {
+                    let (cond_val, cond_instructions) = self.exp_to_instructions(*cond);
+                    let (then_val, then_instructions) = self.exp_to_instructions(*exp1);
+                    let (else_val, else_instructions) = self.exp_to_instructions(*exp2);
+
+                    let else_label = self.create_jump_label();
+                    let end_label = self.create_jump_label();
+
+                    vec![
+                        cond_instructions,
+                        vec![IRInstruction::JumpIfZero(cond_val, else_label)],
+                        then_instructions,
+                        vec![
+                            IRInstruction::Copy(then_val, res),
+                            IRInstruction::Jump(end_label),
+                            IRInstruction::Label(else_label),
+                        ],
+                        else_instructions,
+                        vec![
+                            IRInstruction::Copy(else_val, res),
+                            IRInstruction::Label(end_label),
+                        ],
+                    ]
+                }
+                .into_iter()
+                .flatten()
+                .collect();
+
+                (res, instructions)
             }
         }
     }
@@ -129,8 +183,6 @@ impl IRGenerator {
         exp1: CExpression,
         exp2: CExpression,
     ) -> (IRVal, Vec<IRInstruction>) {
-        use IRInstruction::*;
-
         let (src1, ins1) = self.exp_to_instructions(exp1);
         let (src2, ins2) = self.exp_to_instructions(exp2);
         let dst = IRVal::Var(self.create_temp_var());
@@ -142,15 +194,15 @@ impl IRGenerator {
 
                 vec![
                     ins1,
-                    vec![JumpIfZero(src1, false_label)],
+                    vec![IRInstruction::JumpIfZero(src1, false_label)],
                     ins2,
                     vec![
-                        JumpIfZero(src2, false_label),
-                        Copy(IRVal::Constant(1), dst),
-                        Jump(end_label),
-                        Label(false_label),
-                        Copy(IRVal::Constant(0), dst),
-                        Label(end_label),
+                        IRInstruction::JumpIfZero(src2, false_label),
+                        IRInstruction::Copy(IRVal::Constant(1), dst),
+                        IRInstruction::Jump(end_label),
+                        IRInstruction::Label(false_label),
+                        IRInstruction::Copy(IRVal::Constant(0), dst),
+                        IRInstruction::Label(end_label),
                     ],
                 ]
             }
@@ -160,20 +212,20 @@ impl IRGenerator {
 
                 vec![
                     ins1,
-                    vec![JumpIfNotZero(src1, true_label)],
+                    vec![IRInstruction::JumpIfNotZero(src1, true_label)],
                     ins2,
                     vec![
-                        JumpIfNotZero(src2, true_label),
-                        Copy(IRVal::Constant(0), dst),
-                        Jump(end_label),
-                        Label(true_label),
-                        Copy(IRVal::Constant(1), dst),
-                        Label(end_label),
+                        IRInstruction::JumpIfNotZero(src2, true_label),
+                        IRInstruction::Copy(IRVal::Constant(0), dst),
+                        IRInstruction::Jump(end_label),
+                        IRInstruction::Label(true_label),
+                        IRInstruction::Copy(IRVal::Constant(1), dst),
+                        IRInstruction::Label(end_label),
                     ],
                 ]
             }
             _ => {
-                vec![ins1, ins2, vec![Binary(op, src1, src2, dst)]]
+                vec![ins1, ins2, vec![IRInstruction::Binary(op, src1, src2, dst)]]
             }
         }
         .into_iter()
