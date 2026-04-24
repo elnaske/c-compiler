@@ -1,4 +1,5 @@
 use std::fmt::{self, Formatter};
+use std::ops::Deref;
 
 use crate::common::{BinaryOp, TempId, UnaryOp, VarName};
 
@@ -16,7 +17,7 @@ impl fmt::Display for CProgram {
 #[derive(Debug, PartialEq)]
 pub struct CFunction {
     pub name: String,
-    pub body: Vec<CBlockItem>,
+    pub body: CBlock,
 }
 
 impl fmt::Display for CFunction {
@@ -26,10 +27,41 @@ impl fmt::Display for CFunction {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct CBlock(pub Vec<CBlockItem>);
+
+impl Deref for CBlock {
+    type Target = Vec<CBlockItem>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Display for CBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Block({:?})", &self.0)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CBlockItem {
+    Statement(CStatement),
+    Declaration(CDeclaration),
+}
+impl fmt::Display for CBlockItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Statement(stmnt) => write!(f, "{}", stmnt),
+            Self::Declaration(decl) => write!(f, "{}", decl),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum CStatement {
     Return(CExpression),
     Expression(CExpression),
     If(CExpression, Box<CStatement>, Option<Box<CStatement>>), // condition, then, else
+    Compound(CBlock),
     Null,
 }
 
@@ -46,6 +78,7 @@ impl fmt::Display for CStatement {
                 Some(stmnt) => write!(f, "If(cond={}, then={}, else={}", cond, then, stmnt),
                 None => write!(f, "If(cond={}, then={}", cond, then),
             },
+            Self::Compound(block) => write!(f, "Block({:?})", block),
             Self::Null => {
                 write!(f, "NULL")
             }
@@ -116,20 +149,6 @@ impl fmt::Display for CVar {
         match &self.id {
             Some(id) => write!(f, "{}.{}", self.name, id.0),
             None => write!(f, "{}.?", self.name),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum CBlockItem {
-    Statement(CStatement),
-    Declaration(CDeclaration),
-}
-impl fmt::Display for CBlockItem {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Statement(stmnt) => write!(f, "{}", stmnt),
-            Self::Declaration(decl) => write!(f, "{}", decl),
         }
     }
 }

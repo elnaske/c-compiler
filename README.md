@@ -4,15 +4,14 @@ A minimal compiler for a subset of C written in Rust.
 
 ## Progress (more for my own reference than anything)
 - [x] Compiler driver (gcc preprocessor, assembler, and linker)
-- [x] Minimal compiler that can return constants
-  - [x] Lexer
-  - [x] Parser
-  - [x] Assembly generation
 - [x] Unary operators
 - [x] Binary operators
 - [x] Logical and relational operators
 - [x] Local variables
-- [ ] If statements and conditional expressions
+- [x] If statements and conditional expressions
+- [x] Compound statements / scopes
+- [ ] Loops
+- [ ] Functions
 - [ ] ...
 
 ## Acknowledgements
