@@ -43,6 +43,7 @@ impl IRGenerator {
             name: c_function.name,
             instructions: c_function
                 .body
+                .0
                 .into_iter()
                 .flat_map(|b| self.translate_block_item(b))
                 .chain(std::iter::once(IRInstruction::Return(IRVal::Constant(0)))) // append return 0 to the end to avoid undefined behavior
@@ -100,6 +101,7 @@ impl IRGenerator {
                 cond_instructions.push(IRInstruction::Label(end_label));
                 cond_instructions
             }
+            CStatement::Compound(block) => todo!(),
             CStatement::Null => vec![],
         }
     }

@@ -86,6 +86,13 @@ impl Parser {
         self.expect(Token::CloseParenthesis)?;
         self.expect(Token::OpenBrace)?;
 
+        Ok(CFunction {
+            name,
+            body: self.parse_block()?,
+        })
+    }
+
+    fn parse_block(&mut self) -> Result<CBlock, String> {
         let mut body = Vec::<CBlockItem>::new();
         while let Some(token) = self.peek()
             && *token != Token::CloseBrace
@@ -95,7 +102,7 @@ impl Parser {
 
         self.expect(Token::CloseBrace)?;
 
-        Ok(CFunction { name, body })
+        Ok(CBlock(body))
     }
 
     fn parse_block_item(&mut self) -> Result<CBlockItem, String> {
@@ -147,6 +154,10 @@ impl Parser {
                     _ => None,
                 };
                 Ok(CStatement::If(condition, statement, else_statement))
+            }
+            Some(Token::OpenBrace) => {
+                self.advance();
+                Ok(CStatement::Compound(self.parse_block()?))
             }
             Some(Token::Semicolon) => {
                 self.advance();
@@ -240,19 +251,22 @@ impl Parser {
         Ok(CProgram {
             function: CFunction {
                 name: program.function.name,
-                body: program
-                    .function
-                    .body
-                    .into_iter()
-                    .map(|block| match block {
-                        CBlockItem::Declaration(dec) => {
-                            CBlockItem::Declaration(self.resolve_declaration(dec).unwrap())
-                        }
-                        CBlockItem::Statement(stmnt) => {
-                            CBlockItem::Statement(self.resolve_statement(stmnt).unwrap())
-                        }
-                    })
-                    .collect(),
+                body: CBlock(
+                    program
+                        .function
+                        .body
+                        .0
+                        .into_iter()
+                        .map(|block| match block {
+                            CBlockItem::Declaration(dec) => {
+                                CBlockItem::Declaration(self.resolve_declaration(dec).unwrap())
+                            }
+                            CBlockItem::Statement(stmnt) => {
+                                CBlockItem::Statement(self.resolve_statement(stmnt).unwrap())
+                            }
+                        })
+                        .collect(),
+                ),
             },
         })
     }
@@ -342,6 +356,7 @@ impl Parser {
                 };
                 Ok(CStatement::If(self.resolve_expression(cond)?, then, else_))
             }
+            CStatement::Compound(block) => todo!(),
             CStatement::Null => Ok(CStatement::Null),
         }
     }
