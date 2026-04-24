@@ -101,7 +101,11 @@ impl IRGenerator {
                 cond_instructions.push(IRInstruction::Label(end_label));
                 cond_instructions
             }
-            CStatement::Compound(block) => todo!(),
+            CStatement::Compound(block) => block
+                .0
+                .into_iter()
+                .flat_map(|x| self.translate_block_item(x))
+                .collect(),
             CStatement::Null => vec![],
         }
     }

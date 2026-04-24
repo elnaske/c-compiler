@@ -152,4 +152,3 @@ impl fmt::Display for CVar {
         }
     }
 }
-
