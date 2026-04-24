@@ -13,7 +13,6 @@ struct VarMapEntry {
 
 pub struct Parser {
     tokens: Vec<Token>,
-    //variable_map: HashMap<VarName, TempId>,
     next_var_id: u32,
     pos: usize,
 }
@@ -22,7 +21,6 @@ impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Parser {
             tokens,
-            // variable_map: HashMap::new(),
             next_var_id: 0,
             pos: 0,
         }
@@ -236,6 +234,7 @@ impl Parser {
         self.next_var_id
     }
 
+    // TODO: separate mod for semantic analysis
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
         let mut var_map = HashMap::<VarName, VarMapEntry>::new();
         Ok(CProgram {
@@ -388,8 +387,7 @@ impl Parser {
             }
             CStatement::Compound(block) => {
                 let mut new_var_map = variable_map.clone();
-                for k in variable_map.keys() {
-                    let entry = new_var_map.get_mut(k).unwrap();
+                for entry in new_var_map.values_mut() {
                     entry.is_from_current_block = false;
                 }
                 Ok(CStatement::Compound(
