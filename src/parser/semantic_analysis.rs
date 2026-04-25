@@ -9,6 +9,16 @@ struct VarMapEntry {
     is_from_current_block: bool,
 }
 
+fn copy_variable_map(
+    variable_map: &HashMap<VarName, VarMapEntry>,
+) -> HashMap<VarName, VarMapEntry> {
+    let mut new_var_map = variable_map.clone();
+    for entry in new_var_map.values_mut() {
+        entry.is_from_current_block = false;
+    }
+    new_var_map
+}
+
 pub struct SemanticAnalyzer {
     next_var_id: u32,
 }
@@ -127,6 +137,17 @@ impl SemanticAnalyzer {
         }
     }
 
+    fn resolve_optional_expression(
+        &mut self,
+        expression: Option<CExpression>,
+        variable_map: &mut HashMap<VarName, VarMapEntry>,
+    ) -> Result<Option<CExpression>, String> {
+        Ok(match expression {
+            Some(e) => Some(self.resolve_expression(e, variable_map)?),
+            None => None,
+        })
+    }
+
     fn resolve_factor(
         &mut self,
         factor: CFactor,
@@ -163,8 +184,8 @@ impl SemanticAnalyzer {
             CStatement::Expression(exp) => Ok(CStatement::Expression(
                 self.resolve_expression(exp, variable_map)?,
             )),
-            CStatement::If(cond, then, else_) => {
-                let then = Box::new(self.resolve_statement(*then, variable_map)?);
+            CStatement::If(cond, mut then, else_) => {
+                *then = self.resolve_statement(*then, variable_map)?;
                 let else_ = match else_ {
                     Some(else_stmnt) => {
                         Some(Box::new(self.resolve_statement(*else_stmnt, variable_map)?))
@@ -178,20 +199,40 @@ impl SemanticAnalyzer {
                 ))
             }
             CStatement::Compound(block) => {
-                let mut new_var_map = variable_map.clone();
-                for entry in new_var_map.values_mut() {
-                    entry.is_from_current_block = false;
-                }
-                Ok(CStatement::Compound(
-                    self.resolve_block(block, &mut new_var_map)?,
-                ))
+                // let mut new_var_map = self.copy_variable_map(variable_map);
+                Ok(CStatement::Compound(self.resolve_block(
+                    block,
+                    &mut copy_variable_map(variable_map),
+                )?))
             }
-            CStatement::Break(label) => todo!(),
-            CStatement::Continue(label) => todo!(),
-            CStatement::While(cond, body, label) => todo!(),
-            CStatement::DoWhile(body, cond, label) => todo!(),
-            CStatement::For(init, cond, post, body, label) => todo!(),
-            CStatement::Null => Ok(CStatement::Null),
+            CStatement::While(cond, mut body, label) => {
+                let cond = self.resolve_expression(cond, variable_map)?;
+                *body = self.resolve_statement(*body, variable_map)?;
+                Ok(CStatement::While(cond, body, label))
+            }
+            CStatement::DoWhile(body, cond, label) => {
+                let cond = self.resolve_expression(cond, variable_map)?;
+                let body = Box::new(self.resolve_statement(*body, variable_map)?);
+                Ok(CStatement::DoWhile(body, cond, label))
+            }
+            CStatement::For(init, cond, post, mut body, label) => {
+                let mut new_var_map = copy_variable_map(variable_map);
+                let init = match init {
+                    CForInit::InitDecl(dec) => {
+                        CForInit::InitDecl(self.resolve_declaration(dec, &mut new_var_map)?)
+                    }
+                    CForInit::InitExp(exp) => {
+                        CForInit::InitExp(self.resolve_optional_expression(exp, &mut new_var_map)?)
+                    }
+                };
+                let cond = self.resolve_optional_expression(cond, &mut new_var_map)?;
+                let post = self.resolve_optional_expression(post, &mut new_var_map)?;
+                *body = self.resolve_statement(*body, &mut new_var_map)?;
+
+                Ok(CStatement::For(init, cond, post, body, label))
+            }
+            CStatement::Break(_label) | CStatement::Continue(_label) => Ok(statement),
+            CStatement::Null => Ok(statement),
         }
     }
 }
