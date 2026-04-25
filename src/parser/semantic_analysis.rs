@@ -1,4 +1,5 @@
 use crate::common::{TempId, VarName};
+use crate::ir::ir_ast::Label;
 use crate::parser::c_ast::*;
 
 use std::collections::HashMap;
@@ -21,10 +22,14 @@ fn copy_variable_map(
 
 pub struct SemanticAnalyzer {
     next_var_id: u32,
+    next_label_id: u32,
 }
 impl SemanticAnalyzer {
     pub fn new() -> Self {
-        SemanticAnalyzer { next_var_id: 0 }
+        SemanticAnalyzer {
+            next_var_id: 0,
+            next_label_id: 0,
+        }
     }
 
     fn create_unique_var(&mut self) -> TempId {
@@ -33,8 +38,87 @@ impl SemanticAnalyzer {
         unique_var
     }
 
-    pub fn get_next_var_id(self) -> u32 {
+    fn create_jump_label(&mut self) -> Label {
+        let id = self.next_label_id;
+        self.next_label_id += 1;
+        Label(id)
+    }
+
+    pub fn get_next_var_id(&self) -> u32 {
         self.next_var_id
+    }
+
+    pub fn get_next_label_id(&self) -> u32 {
+        self.next_label_id
+    }
+
+    // TODO: label in place
+    pub fn label_loops(&mut self, program: CProgram) -> Result<CProgram, String> {
+        Ok(CProgram {
+            function: CFunction {
+                name: program.function.name,
+                body: self.label_block(program.function.body, None)?,
+            },
+        })
+    }
+
+    fn label_block(&mut self, block: CBlock, curr_label: Option<Label>) -> Result<CBlock, String> {
+        Ok(CBlock(
+            block
+                .0
+                .into_iter()
+                .map(|item| match item {
+                    CBlockItem::Statement(stmnt) => {
+                        CBlockItem::Statement(self.label_statement(stmnt, curr_label).unwrap())
+                    }
+                    _ => item,
+                })
+                .collect(),
+        ))
+    }
+
+    fn label_statement(
+        &mut self,
+        statement: CStatement,
+        curr_label: Option<Label>,
+    ) -> Result<CStatement, String> {
+        match statement {
+            CStatement::Break(_label) => match curr_label {
+                Some(_) => Ok(CStatement::Break(curr_label)),
+                None => Err("Break statement outside of loop".to_string()),
+            },
+            CStatement::Continue(_label) => match curr_label {
+                Some(_) => Ok(CStatement::Continue(curr_label)),
+                None => Err("Continue statement outside of loop".to_string()),
+            },
+            CStatement::While(cond, mut body, _label) => {
+                let new_label = Some(self.create_jump_label());
+                *body = self.label_statement(*body, new_label)?;
+                Ok(CStatement::While(cond, body, new_label))
+            }
+            CStatement::DoWhile(mut body, cond, _label) => {
+                let new_label = Some(self.create_jump_label());
+                *body = self.label_statement(*body, new_label)?;
+                Ok(CStatement::DoWhile(body, cond, new_label))
+            }
+            CStatement::For(init, cond, post, mut body, _label) => {
+                let new_label = Some(self.create_jump_label());
+                *body = self.label_statement(*body, new_label)?;
+                Ok(CStatement::For(init, cond, post, body, new_label))
+            }
+            CStatement::If(cond, mut then, mut else_) => {
+                *then = self.label_statement(*then, curr_label)?;
+                if let Some(mut stmnt) = else_ {
+                    *stmnt = self.label_statement(*stmnt, curr_label)?;
+                    else_ = Some(stmnt)
+                }
+                Ok(CStatement::If(cond, then, else_))
+            }
+            CStatement::Compound(block) => {
+                Ok(CStatement::Compound(self.label_block(block, curr_label)?))
+            }
+            _ => Ok(statement),
+        }
     }
 
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {

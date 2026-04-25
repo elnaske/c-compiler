@@ -9,14 +9,14 @@ pub struct IRGenerator {
 }
 impl Default for IRGenerator {
     fn default() -> Self {
-        Self::new(0)
+        Self::new(0, 0)
     }
 }
 impl IRGenerator {
-    pub fn new(next_var_id: u32) -> Self {
+    pub fn new(next_var_id: u32, next_label_id: u32) -> Self {
         IRGenerator {
             next_var_id,
-            next_label_id: 0,
+            next_label_id,
         }
     }
 

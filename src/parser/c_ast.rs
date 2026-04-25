@@ -64,6 +64,7 @@ pub enum CForInit {
 }
 
 #[derive(Debug, PartialEq)]
+// TODO: use structs for loops
 pub enum CStatement {
     Return(CExpression),
     Expression(CExpression),

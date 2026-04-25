@@ -104,14 +104,16 @@ fn compile(
             // c_program = parser.resolve_variables(c_program)?;
             let mut semantic_analyzer = SemanticAnalyzer::new();
             c_program = semantic_analyzer.resolve_variables(c_program)?;
+            c_program = semantic_analyzer.label_loops(c_program)?;
             let next_var_id = semantic_analyzer.get_next_var_id();
+            let next_label_id = semantic_analyzer.get_next_label_id();
 
             if cfg.print_ast {
                 println!("{}", c_program);
             }
 
             if cfg.last_stage >= CompilerStage::IR {
-                let ir_program = IRGenerator::new(next_var_id).c_to_ir(c_program);
+                let ir_program = IRGenerator::new(next_var_id, next_label_id).c_to_ir(c_program);
 
                 if cfg.last_stage >= CompilerStage::CodeGen {
                     let codegen = AssemblyGenerator::new();
