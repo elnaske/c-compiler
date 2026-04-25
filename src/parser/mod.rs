@@ -143,6 +143,50 @@ impl Parser {
                 };
                 Ok(CStatement::If(condition, statement, else_statement))
             }
+            Some(Token::Keyword(Keyword::Break)) => {
+                self.advance();
+                self.expect(Token::Semicolon)?;
+                Ok(CStatement::Break(None))
+            }
+            Some(Token::Keyword(Keyword::Continue)) => {
+                self.advance();
+                self.expect(Token::Semicolon)?;
+                Ok(CStatement::Continue(None))
+            }
+            Some(Token::Keyword(Keyword::While)) => {
+                self.advance();
+                self.expect(Token::OpenParenthesis)?;
+                let cond = self.parse_expression(0)?;
+                self.expect(Token::CloseParenthesis)?;
+                let body = self.parse_statement()?;
+                Ok(CStatement::While(cond, Box::new(body), None))
+            }
+            Some(Token::Keyword(Keyword::Do)) => {
+                self.advance();
+                let body = self.parse_statement()?;
+                self.expect(Token::Keyword(Keyword::While))?;
+                self.expect(Token::OpenParenthesis)?;
+                let cond = self.parse_expression(0)?;
+                self.expect(Token::CloseParenthesis)?;
+                self.expect(Token::Semicolon)?;
+                Ok(CStatement::DoWhile(Box::new(body), cond, None))
+            }
+            Some(Token::Keyword(Keyword::For)) => {
+                self.advance();
+                self.expect(Token::OpenParenthesis)?;
+                let init = {
+                    if self.peek() == Some(&Token::Keyword(Keyword::Int)) {
+                        self.advance(); // only int for now, so can skip
+                        CForInit::InitDecl(self.parse_declaration()?)
+                    } else {
+                        CForInit::InitExp(self.parse_optional_expression(Token::Semicolon)?)
+                    }
+                };
+                let cond = self.parse_optional_expression(Token::Semicolon)?;
+                let post = self.parse_optional_expression(Token::CloseParenthesis)?;
+                let body = self.parse_statement()?;
+                Ok(CStatement::For(init, cond, post, Box::new(body), None))
+            }
             Some(Token::OpenBrace) => {
                 self.advance();
                 Ok(CStatement::Compound(self.parse_block()?))
@@ -198,6 +242,22 @@ impl Parser {
         }
 
         Ok(left)
+    }
+
+    fn parse_optional_expression(
+        &mut self,
+        end_token: Token,
+    ) -> Result<Option<CExpression>, String> {
+        let curr_pos = self.pos;
+        let exp = match self.parse_expression(0) {
+            Ok(exp) => Some(exp),
+            Err(_) => {
+                self.pos = curr_pos;
+                None
+            }
+        };
+        self.expect(end_token)?;
+        Ok(exp)
     }
 
     fn parse_factor(&mut self) -> Result<CFactor, String> {
@@ -394,6 +454,11 @@ impl Parser {
                     self.resolve_block(block, &mut new_var_map)?,
                 ))
             }
+            CStatement::Break(label) => todo!(),
+            CStatement::Continue(label) => todo!(),
+            CStatement::While(cond, body, label) => todo!(),
+            CStatement::DoWhile(body, cond, label) => todo!(),
+            CStatement::For(init, cond, post, body, label) => todo!(),
             CStatement::Null => Ok(CStatement::Null),
         }
     }

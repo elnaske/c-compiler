@@ -106,6 +106,11 @@ impl IRGenerator {
                 .into_iter()
                 .flat_map(|x| self.translate_block_item(x))
                 .collect(),
+            CStatement::Break(label) => todo!(),
+            CStatement::Continue(label) => todo!(),
+            CStatement::While(cond, body, label) => todo!(),
+            CStatement::DoWhile(body, cond, label) => todo!(),
+            CStatement::For(init, cond, post, body, label) => todo!(),
             CStatement::Null => vec![],
         }
     }

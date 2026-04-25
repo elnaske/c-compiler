@@ -2,6 +2,7 @@ use std::fmt::{self, Formatter};
 use std::ops::Deref;
 
 use crate::common::{BinaryOp, TempId, UnaryOp, VarName};
+use crate::ir::ir_ast::Label;
 
 #[derive(Debug, PartialEq)]
 pub struct CProgram {
@@ -57,11 +58,28 @@ impl fmt::Display for CBlockItem {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum CForInit {
+    InitDecl(CDeclaration),
+    InitExp(Option<CExpression>),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum CStatement {
     Return(CExpression),
     Expression(CExpression),
     If(CExpression, Box<CStatement>, Option<Box<CStatement>>), // condition, then, else
     Compound(CBlock),
+    Break(Option<Label>),
+    Continue(Option<Label>),
+    While(CExpression, Box<CStatement>, Option<Label>), // condition, body, label
+    DoWhile(Box<CStatement>, CExpression, Option<Label>), // body, condition, label
+    For(
+        CForInit,
+        Option<CExpression>, // condition
+        Option<CExpression>, // final exp
+        Box<CStatement>,     // body
+        Option<Label>,
+    ),
     Null,
 }
 
@@ -79,6 +97,18 @@ impl fmt::Display for CStatement {
                 None => write!(f, "If(cond={}, then={}", cond, then),
             },
             Self::Compound(block) => write!(f, "Block({:?})", block),
+            Self::Break(_label) => write!(f, "Break"),
+            Self::Continue(_label) => write!(f, "Continue"),
+            Self::While(cond, body, _label) => write!(f, "While(cond={}, do={})", cond, *body),
+            Self::DoWhile(body, cond, _label) => write!(f, "DoWhile(do={}, cond={})", *body, cond),
+            Self::For(init, cond, post, body, _label) => {
+                write!(
+                    f,
+                    "For(init={:?}, cond={:?}, post={:?}, do={:?})",
+                    init, cond, post, body
+                )
+            }
+
             Self::Null => {
                 write!(f, "NULL")
             }
