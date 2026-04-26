@@ -18,7 +18,8 @@ impl Parser {
     pub fn parse_program(&mut self) -> Result<CProgram, String> {
         let mut functions = Vec::<CFnDecl>::new();
         while let Some(Token::Keyword(Keyword::Int)) = self.peek() {
-            functions.push(self.parse_function()?);
+            self.expect(Token::Keyword(Keyword::Int))?;
+            functions.push(self.parse_fn_decl()?);
         }
 
         if self.pos < self.tokens.len() {
@@ -42,6 +43,10 @@ impl Parser {
         self.tokens.get(self.pos)
     }
 
+    fn peek_next(&self) -> Option<&Token> {
+        self.tokens.get(self.pos + 1)
+    }
+
     fn expect(&mut self, expected: Token) -> Result<(), String> {
         let actual = self.take_token();
         if actual == Some(&expected) {
@@ -54,26 +59,59 @@ impl Parser {
         }
     }
 
-    fn parse_function(&mut self) -> Result<CFnDecl, String> {
-        self.expect(Token::Keyword(Keyword::Int))?;
-
+    fn parse_fn_decl(&mut self) -> Result<CFnDecl, String> {
         let name = self.parse_identifier()?;
 
         self.expect(Token::OpenParenthesis)?;
         // self.expect(Token::Keyword(Keyword::Void))?;
         let params = self.parse_params()?;
         self.expect(Token::CloseParenthesis)?;
-        self.expect(Token::OpenBrace)?;
+        // self.expect(Token::OpenBrace)?;
 
-        Ok(CFnDecl {
-            name,
-            params,
-            body: self.parse_block()?,
-        })
+        let body = {
+            match self.peek() {
+                Some(Token::OpenBrace) => {
+                    self.advance();
+                    Some(self.parse_block()?)
+                }
+                _ => {
+                    self.expect(Token::Semicolon)?;
+                    None
+                }
+            }
+        };
+
+        Ok(CFnDecl { name, params, body })
     }
 
     fn parse_params(&mut self) -> Result<Vec<CParam>, String> {
-        todo!()
+        if self.peek() == Some(&Token::Keyword(Keyword::Void)) {
+            self.advance();
+            return Ok(vec![CParam {
+                keyword: Keyword::Void,
+                name: None,
+            }]);
+        }
+
+        let mut params = Vec::<CParam>::new();
+
+        loop {
+            self.expect(Token::Keyword(Keyword::Int))?;
+            match self.take_token() {
+                Some(Token::Identifier(name)) => {
+                    params.push(CParam {
+                        keyword: Keyword::Int,
+                        name: Some(name.clone()),
+                    });
+                    if self.peek() == Some(&Token::CloseParenthesis) {
+                        break;
+                    }
+                    self.expect(Token::Comma)?;
+                }
+                _ => return Err("Parameter without identifier".to_string()),
+            }
+        }
+        Ok(params)
     }
 
     fn parse_block(&mut self) -> Result<CBlock, String> {
@@ -91,28 +129,36 @@ impl Parser {
 
     fn parse_block_item(&mut self) -> Result<CBlockItem, String> {
         if self.peek() == Some(&Token::Keyword(Keyword::Int)) {
-            self.advance(); // only int for now, so can skip
-            Ok(CBlockItem::Declaration(CDeclaration::VarDecl(
-                self.parse_var_declaration()?,
-            )))
+            Ok(CBlockItem::Declaration(self.parse_declaration()?))
         } else {
             Ok(CBlockItem::Statement(self.parse_statement()?))
         }
     }
 
+    fn parse_declaration(&mut self) -> Result<CDeclaration, String> {
+        self.expect(Token::Keyword(Keyword::Int))?;
+
+        // check token after identifier
+        match self.peek_next() {
+            Some(&Token::OpenParenthesis) => Ok(CDeclaration::FnDecl(self.parse_fn_decl()?)),
+            _ => Ok(CDeclaration::VarDecl(self.parse_var_declaration()?)),
+        }
+    }
+
     fn parse_var_declaration(&mut self) -> Result<CVarDecl, String> {
-        if let Ok(CFactor::Var(var)) = self.parse_factor() {
-            let exp = match self.peek() {
-                Some(Token::Operator(Operator::Assign)) => {
-                    self.advance();
-                    Some(self.parse_expression(0)?)
-                }
-                _ => None,
-            };
-            self.expect(Token::Semicolon)?;
-            Ok(CVarDecl { var, init: exp })
-        } else {
-            Err("Invalid variable name".to_string())
+        match self.parse_factor() {
+            Ok(CFactor::Var(var)) => {
+                let exp = match self.peek() {
+                    Some(Token::Operator(Operator::Assign)) => {
+                        self.advance();
+                        Some(self.parse_expression(0)?)
+                    }
+                    _ => None,
+                };
+                self.expect(Token::Semicolon)?;
+                Ok(CVarDecl { var, init: exp })
+            }
+            other => Err(format!("Invalid variable name: `{:?}`", other)),
         }
     }
 
@@ -174,7 +220,7 @@ impl Parser {
                 self.expect(Token::OpenParenthesis)?;
                 let init = {
                     if self.peek() == Some(&Token::Keyword(Keyword::Int)) {
-                        self.advance(); // only int for now, so can skip
+                        self.expect(Token::Keyword(Keyword::Int))?;
                         CForInit::InitDecl(self.parse_var_declaration()?)
                     } else {
                         CForInit::InitExp(self.parse_optional_expression(Token::Semicolon)?)
@@ -274,11 +320,51 @@ impl Parser {
                 self.expect(Token::CloseParenthesis)?;
                 Ok(CFactor::Expression(inner_exp))
             }
-            Some(Token::Identifier(name)) => Ok(CFactor::Var(CVar {
-                name: name.clone(),
-                id: None,
-            })),
+            Some(Token::Identifier(name)) => {
+                let name = name.clone();
+                self.parse_var_or_fn_call(name)
+            }
             other => Err(format!("Expected expression, found {:?}", other)),
         }
+    }
+
+    fn parse_var_or_fn_call(&mut self, name: String) -> Result<CFactor, String> {
+        match self.peek() {
+            Some(Token::OpenParenthesis) => {
+                self.advance();
+                let curr_pos = self.pos;
+                let args = match self.parse_args() {
+                    Ok(args) => args,
+                    Err(_) => {
+                        self.pos = curr_pos;
+                        vec![]
+                    }
+                };
+
+                self.expect(Token::CloseParenthesis)?;
+                Ok(CFactor::FunctionCall(name, args))
+            }
+            _ => Ok(CFactor::Var(CVar { name, id: None })),
+        }
+    }
+
+    fn parse_args(&mut self) -> Result<Vec<CExpression>, String> {
+        let mut args = Vec::<CExpression>::new();
+
+        // while self.peek() != Some(&Token::CloseParenthesis) {
+        //     args.push(self.parse_expression(0)?);
+        //     if self.peek() != Some(&Token::CloseParenthesis) {
+        //         self.expect(Token::Comma)?;
+        //     }
+        // }
+        loop {
+            args.push(self.parse_expression(0)?);
+            if self.peek() == Some(&Token::CloseParenthesis) {
+                break;
+            }
+            self.expect(Token::Comma)?;
+        }
+
+        Ok(args)
     }
 }

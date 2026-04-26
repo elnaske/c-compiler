@@ -8,7 +8,6 @@ use crate::ir::ir_ast::Label;
 pub struct CProgram {
     pub functions: Vec<CFnDecl>,
 }
-
 impl fmt::Display for CProgram {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Program({:?})", self.functions)
@@ -19,9 +18,8 @@ impl fmt::Display for CProgram {
 pub struct CFnDecl {
     pub name: String,
     pub params: Vec<CParam>,
-    pub body: CBlock,
+    pub body: Option<CBlock>,
 }
-
 impl fmt::Display for CFnDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Function(name='{}', body={:?})", self.name, self.body,)
@@ -31,19 +29,17 @@ impl fmt::Display for CFnDecl {
 #[derive(Debug, PartialEq)]
 pub struct CParam {
     pub keyword: Keyword,
-    pub name: Option<String>,
+    pub name: Option<String>, // only None for void
 }
 
 #[derive(Debug, PartialEq)]
 pub struct CBlock(pub Vec<CBlockItem>);
-
 impl Deref for CBlock {
     type Target = Vec<CBlockItem>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-
 impl fmt::Display for CBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Block({:?})", &self.0)
@@ -90,7 +86,6 @@ pub enum CStatement {
     ),
     Null,
 }
-
 impl fmt::Display for CStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -130,7 +125,6 @@ pub enum CExpression {
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
     Assign(Box<CExpression>, Box<CExpression>),
     Conditional(Box<CExpression>, Box<CExpression>, Box<CExpression>), // cond, then, else
-    FunctionCall(String, Vec<CExpression>),                            // name, args
 }
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -140,9 +134,6 @@ impl fmt::Display for CExpression {
             Self::Assign(exp1, exp2) => write!(f, "Assign({} = {})", exp1, exp2),
             Self::Conditional(cond, exp1, exp2) => {
                 write!(f, "Conditional({} ? {} : {})", cond, exp1, exp2)
-            }
-            Self::FunctionCall(name, args) => {
-                write!(f, "{}({:?})", name, args)
             }
         }
     }
@@ -154,8 +145,8 @@ pub enum CFactor {
     Unary(UnaryOp, Box<CFactor>),
     Expression(CExpression),
     Var(CVar),
+    FunctionCall(String, Vec<CExpression>), // name, args
 }
-
 impl fmt::Display for CFactor {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -163,6 +154,9 @@ impl fmt::Display for CFactor {
             Self::Unary(op, exp) => write!(f, "UnaryOp({}, {})", op, *exp),
             Self::Expression(exp) => write!(f, "Expression({})", exp),
             Self::Var(name) => write!(f, "Var({})", name),
+            Self::FunctionCall(name, args) => {
+                write!(f, "{}({:?})", name, args)
+            }
         }
     }
 }

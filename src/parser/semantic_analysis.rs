@@ -93,7 +93,10 @@ impl SemanticAnalyzer {
                 .map(|f| CFnDecl {
                     name: f.name,
                     params: f.params,
-                    body: self.label_block(f.body, None).unwrap(),
+                    body: match f.body {
+                        Some(b) => Some(self.label_block(b, None).unwrap()),
+                        None => None,
+                    },
                 })
                 .collect(),
         })
@@ -193,10 +196,13 @@ impl SemanticAnalyzer {
         function: CFnDecl,
         variable_map: &mut VarMap,
     ) -> Result<CFnDecl, String> {
-        Ok(CFnDecl {
-            name: function.name,
-            params: function.params,
-            body: self.resolve_block(function.body, variable_map)?,
+        Ok(match function.body {
+            Some(b) => CFnDecl {
+                name: function.name,
+                params: function.params,
+                body: Some(self.resolve_block(b, variable_map)?),
+            },
+            None => function,
         })
     }
 
@@ -292,9 +298,6 @@ impl SemanticAnalyzer {
                     Box::new(exp2),
                 ))
             }
-            CExpression::FunctionCall(name, body) => {
-                todo!()
-            }
         }
     }
 
@@ -330,6 +333,9 @@ impl SemanticAnalyzer {
                 self.resolve_expression(exp, variable_map)?,
             )),
             CFactor::Constant(_) => Ok(factor),
+            CFactor::FunctionCall(name, body) => {
+                todo!()
+            }
         }
     }
 

@@ -62,6 +62,7 @@ impl IRGenerator {
             name: c_function.name,
             instructions: c_function
                 .body
+                .unwrap_or(CBlock(vec![]))
                 .0
                 .into_iter()
                 .flat_map(|b| self.translate_block_item(b))
@@ -256,9 +257,6 @@ impl IRGenerator {
 
                 (res, instructions)
             }
-            CExpression::FunctionCall(name, body) => {
-                todo!()
-            }
         }
     }
 
@@ -275,6 +273,9 @@ impl IRGenerator {
             }
             CFactor::Expression(exp) => self.exp_to_instructions(exp),
             CFactor::Var(var) => (IRVal::Var(var.id.unwrap()), vec![]),
+            CFactor::FunctionCall(name, body) => {
+                todo!()
+            }
         }
     }
 
