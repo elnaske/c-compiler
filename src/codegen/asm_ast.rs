@@ -98,13 +98,13 @@ impl fmt::Display for AsmInstruction {
             Self::Cmp(op1, op2) => write!(f, "cmpl {}, {}", op1, op2),
             Self::Idiv(op) => write!(f, "idivl {}", op),
             Self::Cdq => write!(f, "cdq"),
-            Self::Jmp(target) => write!(f, "jmp .L{}", target),
-            Self::JmpCC(cond, target) => write!(f, "j{} .L{}", cond, target),
+            Self::Jmp(target) => write!(f, "jmp .L_{}", target),
+            Self::JmpCC(cond, target) => write!(f, "j{} .L_{}", cond, target),
             Self::SetCC(cond, op) => match op {
                 AsmOperand::Register(reg) => write!(f, "set{} {}", cond, reg.as_1_byte()),
                 _ => write!(f, "set{} {}", cond, op),
             },
-            Self::Label(label) => write!(f, ".L{}:", label),
+            Self::Label(label) => write!(f, ".L_{}:", label),
             Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
             Self::Ret => write!(f, "movq %rbp, %rsp\npopq %rbp\nret"),
         }
