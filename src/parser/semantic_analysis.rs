@@ -1,14 +1,17 @@
-use crate::common::TempId;
+use crate::common::{Keyword, TempId};
 use crate::ir::ir_ast::{Label, LabelKind};
 use crate::parser::c_ast::*;
 
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
+// TODO: rename : VarMap -> IdentifierMap, is_from_current_block -> is_from_current_scope
+
 #[derive(Debug, Clone)]
 struct VarMapEntry {
     id: TempId,
     is_from_current_block: bool,
+    has_linkage: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -170,15 +173,6 @@ impl SemanticAnalyzer {
     }
 
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
-        // let mut var_map = VarMap::new();
-        // Ok(CProgram {
-        //     function: CFnDecl {
-        //         name: program.function.name,
-        //         body: self.resolve_block(program.function.body, &mut var_map)?,
-        //     },
-        // })
-
-        // TODO: not sure if this is in the right place ...
         let mut var_map = VarMap::new();
 
         // TODO: remove unwrap()
@@ -186,23 +180,48 @@ impl SemanticAnalyzer {
             functions: program
                 .functions
                 .into_iter()
-                .map(|f| self.resolve_function(f, &mut var_map).unwrap())
+                .map(|f| self.resolve_fn_declaration(f, &mut var_map).unwrap())
                 .collect(),
         })
     }
 
-    fn resolve_function(
+    fn resolve_fn_declaration(
         &mut self,
         function: CFnDecl,
         variable_map: &mut VarMap,
     ) -> Result<CFnDecl, String> {
-        Ok(match function.body {
-            Some(b) => CFnDecl {
-                name: function.name,
-                params: function.params,
-                body: Some(self.resolve_block(b, variable_map)?),
+        if let Some(entry) = variable_map.get(&function.name)
+            && entry.is_from_current_block
+            && !entry.has_linkage
+        {
+            return Err(format!("Function `{}` is declared twice.", function.name));
+        }
+
+        variable_map.insert(
+            function.name.clone(),
+            VarMapEntry {
+                id: TempId(0), // TODO: figure out better solution
+                is_from_current_block: true,
+                has_linkage: true,
             },
-            None => function,
+        );
+
+        let mut inner_map = copy_variable_map(variable_map);
+        // TODO: remove unwrap()
+        let new_params = function
+            .params
+            .into_iter()
+            .map(|p| self.resolve_param(p, &mut inner_map).unwrap())
+            .collect();
+        let new_body = match function.body {
+            Some(b) => Some(self.resolve_block(b, &mut inner_map)?),
+            None => None,
+        };
+
+        Ok(CFnDecl {
+            name: function.name,
+            params: new_params,
+            body: new_body,
         })
     }
 
@@ -221,7 +240,16 @@ impl SemanticAnalyzer {
                             self.resolve_var_declaration(vdec, variable_map).unwrap(),
                         ),
                         CDeclaration::FnDecl(fdec) => CDeclaration::FnDecl(
-                            self.resolve_function(fdec, &mut VarMap::new()).unwrap(),
+                            // nested function definitions are not allowed, but function declarations are
+                            {
+                                match fdec.body {
+                                    None => self.resolve_fn_declaration(fdec, variable_map),
+                                    Some(_) => {
+                                        Err(format!("Nested function definition: `{}`", fdec.name))
+                                    }
+                                }
+                            }
+                            .unwrap(),
                         ),
                     }),
                     CBlockItem::Statement(stmnt) => {
@@ -232,25 +260,26 @@ impl SemanticAnalyzer {
         ))
     }
 
+    fn resolve_param(
+        &mut self,
+        param: CParam,
+        variable_map: &mut VarMap,
+    ) -> Result<CParam, String> {
+        if let Some(ref name) = param.name {
+            let _ = self.resolve_var_or_param_name(name, variable_map)?;
+        }
+        Ok(param)
+    }
+
     fn resolve_var_declaration(
         &mut self,
         var_decl: CVarDecl,
         variable_map: &mut VarMap,
     ) -> Result<CVarDecl, String> {
         let (var, mut exp) = (var_decl.var, var_decl.init);
-        if let Some(entry) = variable_map.get(&var.name)
-            && entry.is_from_current_block
-        {
-            return Err(format!("Variable `{}` is declared twice", var.name));
-        }
-        let id = self.create_unique_var();
-        variable_map.insert(
-            var.name.clone(),
-            VarMapEntry {
-                id,
-                is_from_current_block: true,
-            },
-        );
+
+        let id = self.resolve_var_or_param_name(&var.name, variable_map)?;
+
         if let Some(e) = exp {
             exp = Some(self.resolve_expression(e, variable_map)?);
         }
@@ -262,6 +291,29 @@ impl SemanticAnalyzer {
             var: unique_var,
             init: exp,
         })
+    }
+
+    fn resolve_var_or_param_name(
+        &mut self,
+        name: &str,
+        variable_map: &mut VarMap,
+    ) -> Result<TempId, String> {
+        if let Some(entry) = variable_map.get(name)
+            && entry.is_from_current_block
+        {
+            return Err(format!("`{}` is declared twice", name));
+        }
+        let id = self.create_unique_var();
+        variable_map.insert(
+            name.to_string(),
+            VarMapEntry {
+                id,
+                is_from_current_block: true,
+                has_linkage: false, // TODO: is this correct?
+            },
+        );
+
+        Ok(id)
     }
 
     // TODO: resolve in place instead of allocating new pointers and cloning (iter_mut()?)
@@ -325,6 +377,17 @@ impl SemanticAnalyzer {
                 })),
                 None => Err(format!("Undeclared variable `{}`", var.name)),
             },
+            CFactor::FunctionCall(name, args) => match variable_map.get(&name) {
+                Some(_) => {
+                    // TODO: remove unwrap()
+                    let new_args = args
+                        .into_iter()
+                        .map(|arg| self.resolve_expression(arg, variable_map).unwrap())
+                        .collect();
+                    Ok(CFactor::FunctionCall(name, new_args))
+                }
+                None => Err(format!("Undeclared function `{}`", name)),
+            },
             CFactor::Unary(op, f2) => {
                 let f2 = self.resolve_factor(*f2, variable_map)?;
                 Ok(CFactor::Unary(op, Box::new(f2)))
@@ -333,9 +396,6 @@ impl SemanticAnalyzer {
                 self.resolve_expression(exp, variable_map)?,
             )),
             CFactor::Constant(_) => Ok(factor),
-            CFactor::FunctionCall(name, body) => {
-                todo!()
-            }
         }
     }
 
