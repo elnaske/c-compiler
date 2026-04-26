@@ -7,6 +7,11 @@ pub enum Keyword {
     Void,
     If,
     Else,
+    While,
+    Do,
+    For,
+    Break,
+    Continue,
     Return,
 }
 
@@ -17,6 +22,11 @@ impl Keyword {
             b"void" => Some(Keyword::Void),
             b"if" => Some(Keyword::If),
             b"else" => Some(Keyword::Else),
+            b"while" => Some(Keyword::While),
+            b"do" => Some(Keyword::Do),
+            b"for" => Some(Keyword::For),
+            b"break" => Some(Keyword::Break),
+            b"continue" => Some(Keyword::Continue),
             b"return" => Some(Keyword::Return),
             _ => None,
         }

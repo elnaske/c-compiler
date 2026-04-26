@@ -9,14 +9,14 @@ pub struct IRGenerator {
 }
 impl Default for IRGenerator {
     fn default() -> Self {
-        Self::new(0)
+        Self::new(0, 0)
     }
 }
 impl IRGenerator {
-    pub fn new(next_var_id: u32) -> Self {
+    pub fn new(next_var_id: u32, next_label_id: u32) -> Self {
         IRGenerator {
             next_var_id,
-            next_label_id: 0,
+            next_label_id,
         }
     }
 
@@ -26,10 +26,24 @@ impl IRGenerator {
         TempId(id)
     }
 
-    fn create_jump_label(&mut self) -> Label {
+    fn create_jump_label(&mut self, kind: LabelKind) -> Label {
         let id = self.next_label_id;
         self.next_label_id += 1;
-        Label(id)
+        Label { kind, id }
+    }
+
+    fn resolve_loop_labels(&mut self, start: Option<Label>) -> (Label, Label, Label) {
+        let start = start.expect("Encountered unlabeled loop");
+        let continue_label = Label {
+            kind: LabelKind::Continue,
+            id: start.id,
+        };
+        let break_label = Label {
+            kind: LabelKind::Break,
+            id: start.id,
+        };
+
+        (start, continue_label, break_label)
     }
 
     pub fn c_to_ir(&mut self, c_program: CProgram) -> IRProgram {
@@ -53,16 +67,25 @@ impl IRGenerator {
 
     fn translate_block_item(&mut self, c_block_item: CBlockItem) -> Vec<IRInstruction> {
         match c_block_item {
-            CBlockItem::Declaration(dec) => match dec.init {
-                Some(exp) => {
-                    let (result, mut instructions) = self.exp_to_instructions(exp);
-                    let ir_var = IRVal::Var(dec.var.id.expect("IDK man"));
-                    instructions.push(IRInstruction::Copy(result, ir_var));
-                    instructions
-                }
-                None => vec![],
-            },
+            CBlockItem::Declaration(dec) => self.declaration_to_instructions(dec),
             CBlockItem::Statement(stmnt) => self.statement_to_instructions(stmnt),
+        }
+    }
+
+    fn declaration_to_instructions(&mut self, c_declaration: CDeclaration) -> Vec<IRInstruction> {
+        match c_declaration.init {
+            Some(exp) => {
+                let (result, mut instructions) = self.exp_to_instructions(exp);
+                let ir_var = IRVal::Var(
+                    c_declaration
+                        .var
+                        .id
+                        .expect("Encountered unresolved variable"),
+                );
+                instructions.push(IRInstruction::Copy(result, ir_var));
+                instructions
+            }
+            None => vec![],
         }
     }
 
@@ -80,12 +103,12 @@ impl IRGenerator {
             CStatement::If(cond, then, else_) => {
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
                 let mut then_instructions = self.statement_to_instructions(*then);
-                let end_label = self.create_jump_label();
+                let end_label = self.create_jump_label(LabelKind::End);
 
                 match else_ {
                     Some(else_stmnt) => {
                         let mut else_instructions = self.statement_to_instructions(*else_stmnt);
-                        let else_label = self.create_jump_label();
+                        let else_label = self.create_jump_label(LabelKind::Else);
 
                         cond_instructions.push(IRInstruction::JumpIfZero(cond_val, else_label));
                         cond_instructions.append(&mut then_instructions);
@@ -106,6 +129,71 @@ impl IRGenerator {
                 .into_iter()
                 .flat_map(|x| self.translate_block_item(x))
                 .collect(),
+            CStatement::Break(label) => {
+                vec![IRInstruction::Jump(
+                    label.expect("Encountered unlabeled break statement"),
+                )]
+            }
+            CStatement::Continue(label) => {
+                vec![IRInstruction::Jump(
+                    label.expect("Encountered unlabeled continue statement"),
+                )]
+            }
+            CStatement::While(cond, body, start) => {
+                let (_, continue_label, break_label) = self.resolve_loop_labels(start);
+                let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
+
+                let mut instructions = vec![IRInstruction::Label(continue_label)];
+                instructions.append(&mut cond_instructions);
+                instructions.push(IRInstruction::JumpIfZero(cond_val, break_label));
+                instructions.append(&mut self.statement_to_instructions(*body));
+                instructions.push(IRInstruction::Jump(continue_label));
+                instructions.push(IRInstruction::Label(break_label));
+
+                instructions
+            }
+            CStatement::DoWhile(body, cond, start) => {
+                let (start, continue_label, break_label) = self.resolve_loop_labels(start);
+                let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
+
+                let mut instructions = vec![IRInstruction::Label(start)];
+                instructions.append(&mut self.statement_to_instructions(*body));
+                instructions.push(IRInstruction::Label(continue_label));
+                instructions.append(&mut cond_instructions);
+                instructions.push(IRInstruction::JumpIfNotZero(cond_val, start));
+                instructions.push(IRInstruction::Label(break_label));
+
+                instructions
+            }
+            CStatement::For(init, cond, post, body, start) => {
+                let (start, continue_label, break_label) = self.resolve_loop_labels(start);
+
+                let mut instructions = match init {
+                    CForInit::InitDecl(dec) => self.declaration_to_instructions(dec),
+                    CForInit::InitExp(exp) => match exp {
+                        Some(e) => {
+                            let (_, instructions) = self.exp_to_instructions(e);
+                            instructions
+                        }
+                        None => vec![],
+                    },
+                };
+                instructions.push(IRInstruction::Label(start));
+                if let Some(c) = cond {
+                    let (cond_val, mut cond_instructions) = self.exp_to_instructions(c);
+                    instructions.append(&mut cond_instructions);
+                    instructions.push(IRInstruction::JumpIfZero(cond_val, break_label));
+                }
+                instructions.append(&mut self.statement_to_instructions(*body));
+                instructions.push(IRInstruction::Label(continue_label));
+                if let Some(p) = post {
+                    let (_, mut post_instructions) = self.exp_to_instructions(p);
+                    instructions.append(&mut post_instructions);
+                }
+                instructions.push(IRInstruction::Jump(start));
+                instructions.push(IRInstruction::Label(break_label));
+                instructions
+            }
             CStatement::Null => vec![],
         }
     }
@@ -139,8 +227,8 @@ impl IRGenerator {
                     let (then_val, then_instructions) = self.exp_to_instructions(*exp1);
                     let (else_val, else_instructions) = self.exp_to_instructions(*exp2);
 
-                    let else_label = self.create_jump_label();
-                    let end_label = self.create_jump_label();
+                    let else_label = self.create_jump_label(LabelKind::Else);
+                    let end_label = self.create_jump_label(LabelKind::End);
 
                     vec![
                         cond_instructions,
@@ -195,8 +283,8 @@ impl IRGenerator {
 
         let instructions = match op {
             BinaryOp::LogicalAnd => {
-                let false_label = self.create_jump_label();
-                let end_label = self.create_jump_label();
+                let false_label = self.create_jump_label(LabelKind::False);
+                let end_label = self.create_jump_label(LabelKind::End);
 
                 vec![
                     ins1,
@@ -213,8 +301,8 @@ impl IRGenerator {
                 ]
             }
             BinaryOp::LogicalOr => {
-                let true_label = self.create_jump_label();
-                let end_label = self.create_jump_label();
+                let true_label = self.create_jump_label(LabelKind::True);
+                let end_label = self.create_jump_label(LabelKind::End);
 
                 vec![
                     ins1,

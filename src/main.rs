@@ -8,6 +8,7 @@ pub mod lexer;
 use lexer::Lexer;
 pub mod parser;
 use parser::Parser;
+use parser::semantic_analysis::SemanticAnalyzer;
 pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
@@ -21,7 +22,8 @@ enum CompilerStage {
     VariableResolution,
     IR,
     CodeGen,
-    CodeEmission,
+    EmitAsm,
+    AssembleAndLink,
 }
 
 struct Config {
@@ -37,7 +39,7 @@ impl Config {
         Config {
             infiles: Vec::new(),
             outfile: None,
-            last_stage: CompilerStage::CodeEmission,
+            last_stage: CompilerStage::AssembleAndLink,
             print_tokens: false,
             print_ast: false,
         }
@@ -62,6 +64,7 @@ impl Config {
                     "--validate" => cfg.last_stage = CompilerStage::VariableResolution,
                     "--tacky" => cfg.last_stage = CompilerStage::IR,
                     "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
+                    "-S" => cfg.last_stage = CompilerStage::EmitAsm,
                     "--print_tokens" => cfg.print_tokens = true,
                     "--print_ast" => cfg.print_ast = true,
                     other => return Err(format!("illegal flag `{other}`")),
@@ -100,21 +103,26 @@ fn compile(
         let mut c_program = parser.parse_program()?;
 
         if cfg.last_stage >= CompilerStage::VariableResolution {
-            c_program = parser.resolve_variables(c_program)?;
+            // c_program = parser.resolve_variables(c_program)?;
+            let mut semantic_analyzer = SemanticAnalyzer::new();
+            c_program = semantic_analyzer.resolve_variables(c_program)?;
+            c_program = semantic_analyzer.label_loops(c_program)?;
+            let next_var_id = semantic_analyzer.get_next_var_id();
+            let next_label_id = semantic_analyzer.get_next_label_id();
 
             if cfg.print_ast {
                 println!("{}", c_program);
             }
 
             if cfg.last_stage >= CompilerStage::IR {
-                let ir_program = IRGenerator::new(parser.get_next_var_id()).c_to_ir(c_program);
+                let ir_program = IRGenerator::new(next_var_id, next_label_id).c_to_ir(c_program);
 
                 if cfg.last_stage >= CompilerStage::CodeGen {
                     let codegen = AssemblyGenerator::new();
                     let asm_program = codegen.ir_to_asm(ir_program);
                     let asm = codegen.generate_asm(asm_program);
 
-                    if cfg.last_stage >= CompilerStage::CodeEmission {
+                    if cfg.last_stage >= CompilerStage::EmitAsm {
                         let mut file =
                             fs::File::create(outfile).expect("Failed to create output file");
                         write!(file, "{}", asm).expect("Failed to write to output file");
@@ -136,7 +144,7 @@ fn assemble_and_link(assembly_file: &str, outfile: &str) {
 fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
     let output = match cfg.outfile {
         Some(ref s) => s.clone(),
-        None => "a.out".to_string(),
+        None => "a".to_string(),
     };
 
     let preprocessor_output = output.to_owned() + ".i";
@@ -147,7 +155,7 @@ fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
     compile(&cfg, &preprocessor_output, &assembly_output)?;
     fs::remove_file(preprocessor_output).expect("failed to remove preprocessed file");
 
-    if cfg.last_stage >= CompilerStage::CodeEmission {
+    if cfg.last_stage >= CompilerStage::AssembleAndLink {
         assemble_and_link(&assembly_output, &output);
         fs::remove_file(assembly_output).expect("failed to remove assembly file");
     }

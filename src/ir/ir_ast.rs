@@ -132,10 +132,37 @@ impl IRVal {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct Label(pub u32);
+pub struct Label {
+    pub kind: LabelKind,
+    pub id: u32,
+}
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "label_{}", self.0)
+        write!(f, "label_{}_{}", self.kind, self.id)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum LabelKind {
+    True,
+    False,
+    End,
+    LoopStart,
+    Break,
+    Continue,
+    Else,
+}
+impl fmt::Display for LabelKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::True => write!(f, "true"),
+            Self::False => write!(f, "false"),
+            Self::End => write!(f, "end"),
+            Self::LoopStart => write!(f, "start_loop"),
+            Self::Break => write!(f, "break_loop"),
+            Self::Continue => write!(f, "continue_loop"),
+            Self::Else => write!(f, "else"),
+        }
     }
 }
 
