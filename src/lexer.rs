@@ -12,6 +12,7 @@ pub enum Token {
     CloseParenthesis,
     OpenBrace,
     CloseBrace,
+    Comma,
     Semicolon,
     Colon,
     Eof,
@@ -171,6 +172,10 @@ impl<'a> Lexer<'a> {
             Some(b'}') => {
                 self.advance();
                 Ok(Token::CloseBrace)
+            }
+            Some(b',') => {
+                self.advance();
+                Ok(Token::Comma)
             }
             Some(b';') => {
                 self.advance();

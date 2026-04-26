@@ -11,7 +11,7 @@ use crate::common::{BinaryOp, TempId, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub struct IRProgram {
-    pub function: IRFunction,
+    pub functions: Vec<IRFunction>,
 }
 
 #[derive(Debug, PartialEq)]

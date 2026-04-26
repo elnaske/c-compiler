@@ -4,7 +4,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub struct AsmProgram {
-    pub function: AsmFunction,
+    pub functions: Vec<AsmFunction>,
 }
 
 #[derive(Debug, PartialEq)]

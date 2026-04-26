@@ -1,4 +1,5 @@
 pub mod ir_ast;
+
 use crate::common::{BinaryOp, TempId};
 use crate::parser::c_ast::*;
 use ir_ast::*;
@@ -48,11 +49,15 @@ impl IRGenerator {
 
     pub fn c_to_ir(&mut self, c_program: CProgram) -> IRProgram {
         IRProgram {
-            function: self.translate_function(c_program.function),
+            functions: c_program
+                .functions
+                .into_iter()
+                .map(|f| self.translate_function(f))
+                .collect(), // function: self.translate_function(c_program.function),
         }
     }
 
-    fn translate_function(&mut self, c_function: CFunction) -> IRFunction {
+    fn translate_function(&mut self, c_function: CFnDecl) -> IRFunction {
         IRFunction {
             name: c_function.name,
             instructions: c_function
@@ -67,21 +72,20 @@ impl IRGenerator {
 
     fn translate_block_item(&mut self, c_block_item: CBlockItem) -> Vec<IRInstruction> {
         match c_block_item {
-            CBlockItem::Declaration(dec) => self.declaration_to_instructions(dec),
+            CBlockItem::Declaration(dec) => match dec {
+                CDeclaration::VarDecl(vdec) => self.var_declaration_to_instructions(vdec),
+                CDeclaration::FnDecl(fdec) => todo!(),
+            },
+
             CBlockItem::Statement(stmnt) => self.statement_to_instructions(stmnt),
         }
     }
 
-    fn declaration_to_instructions(&mut self, c_declaration: CDeclaration) -> Vec<IRInstruction> {
-        match c_declaration.init {
+    fn var_declaration_to_instructions(&mut self, var_decl: CVarDecl) -> Vec<IRInstruction> {
+        match var_decl.init {
             Some(exp) => {
                 let (result, mut instructions) = self.exp_to_instructions(exp);
-                let ir_var = IRVal::Var(
-                    c_declaration
-                        .var
-                        .id
-                        .expect("Encountered unresolved variable"),
-                );
+                let ir_var = IRVal::Var(var_decl.var.id.expect("Encountered unresolved variable"));
                 instructions.push(IRInstruction::Copy(result, ir_var));
                 instructions
             }
@@ -169,7 +173,7 @@ impl IRGenerator {
                 let (start, continue_label, break_label) = self.resolve_loop_labels(start);
 
                 let mut instructions = match init {
-                    CForInit::InitDecl(dec) => self.declaration_to_instructions(dec),
+                    CForInit::InitDecl(dec) => self.var_declaration_to_instructions(dec),
                     CForInit::InitExp(exp) => match exp {
                         Some(e) => {
                             let (_, instructions) = self.exp_to_instructions(e);
@@ -251,6 +255,9 @@ impl IRGenerator {
                 .collect();
 
                 (res, instructions)
+            }
+            CExpression::FunctionCall(name, body) => {
+                todo!()
             }
         }
     }

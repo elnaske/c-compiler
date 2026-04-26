@@ -1,30 +1,37 @@
 use std::fmt::{self, Formatter};
 use std::ops::Deref;
 
-use crate::common::{BinaryOp, TempId, UnaryOp, VarName};
+use crate::common::{BinaryOp, Keyword, TempId, UnaryOp};
 use crate::ir::ir_ast::Label;
 
 #[derive(Debug, PartialEq)]
 pub struct CProgram {
-    pub function: CFunction,
+    pub functions: Vec<CFnDecl>,
 }
 
 impl fmt::Display for CProgram {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Program({})", self.function)
+        write!(f, "Program({:?})", self.functions)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct CFunction {
+pub struct CFnDecl {
     pub name: String,
+    pub params: Vec<CParam>,
     pub body: CBlock,
 }
 
-impl fmt::Display for CFunction {
+impl fmt::Display for CFnDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Function(name='{}', body={:?})", self.name, self.body,)
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CParam {
+    pub keyword: Keyword,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -59,7 +66,7 @@ impl fmt::Display for CBlockItem {
 
 #[derive(Debug, PartialEq)]
 pub enum CForInit {
-    InitDecl(CDeclaration),
+    InitDecl(CVarDecl),
     InitExp(Option<CExpression>),
 }
 
@@ -123,6 +130,7 @@ pub enum CExpression {
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
     Assign(Box<CExpression>, Box<CExpression>),
     Conditional(Box<CExpression>, Box<CExpression>, Box<CExpression>), // cond, then, else
+    FunctionCall(String, Vec<CExpression>),                            // name, args
 }
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -132,6 +140,9 @@ impl fmt::Display for CExpression {
             Self::Assign(exp1, exp2) => write!(f, "Assign({} = {})", exp1, exp2),
             Self::Conditional(cond, exp1, exp2) => {
                 write!(f, "Conditional({} ? {} : {})", cond, exp1, exp2)
+            }
+            Self::FunctionCall(name, args) => {
+                write!(f, "{}({:?})", name, args)
             }
         }
     }
@@ -156,12 +167,26 @@ impl fmt::Display for CFactor {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct CDeclaration {
+#[derive(Debug, PartialEq)]
+pub enum CDeclaration {
+    FnDecl(CFnDecl),
+    VarDecl(CVarDecl),
+}
+impl fmt::Display for CDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FnDecl(dec) => write!(f, "{}", dec),
+            Self::VarDecl(dec) => write!(f, "{}", dec),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CVarDecl {
     pub var: CVar,
     pub init: Option<CExpression>,
 }
-impl fmt::Display for CDeclaration {
+impl fmt::Display for CVarDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match &self.init {
             Some(exp) => write!(f, "{}({})", self.var, exp),
@@ -172,7 +197,7 @@ impl fmt::Display for CDeclaration {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct CVar {
-    pub name: VarName,
+    pub name: String,
     pub id: Option<TempId>,
 }
 impl fmt::Display for CVar {

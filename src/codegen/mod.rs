@@ -17,34 +17,36 @@ impl AssemblyGenerator {
     }
 
     pub fn ir_to_asm(&self, ir_program: IRProgram) -> AsmProgram {
-        let mut asm_program = self.translate_program(ir_program);
-        let stack_size = self.replace_pseudo_registers(&mut asm_program);
-        asm_program.function.instructions =
-            self.fix_instructions(asm_program.function.instructions, stack_size);
-        asm_program
+        todo!();
+        // let mut asm_program = self.translate_program(ir_program);
+        // let stack_size = self.replace_pseudo_registers(&mut asm_program);
+        // asm_program.function.instructions =
+        //     self.fix_instructions(asm_program.function.instructions, stack_size);
+        // asm_program
     }
 
     fn replace_pseudo_registers(&self, asm_program: &mut AsmProgram) -> usize {
-        let mut tmp_to_offset = HashMap::<TempId, usize>::new();
-        let mut curr_offset: usize = 0;
+        todo!();
+        // let mut tmp_to_offset = HashMap::<TempId, usize>::new();
+        // let mut curr_offset: usize = 0;
 
-        for instruction in &mut asm_program.function.instructions {
-            match instruction {
-                AsmInstruction::Mov(op1, op2)
-                | AsmInstruction::Binary(_, op1, op2)
-                | AsmInstruction::Cmp(op1, op2) => {
-                    self.pseudo_to_stack(op1, &mut curr_offset, &mut tmp_to_offset);
-                    self.pseudo_to_stack(op2, &mut curr_offset, &mut tmp_to_offset);
-                }
-                AsmInstruction::Unary(_, op)
-                | AsmInstruction::Idiv(op)
-                | AsmInstruction::SetCC(_, op) => {
-                    self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
-                }
-                _ => (),
-            }
-        }
-        curr_offset
+        // for instruction in &mut asm_program.function.instructions {
+        //     match instruction {
+        //         AsmInstruction::Mov(op1, op2)
+        //         | AsmInstruction::Binary(_, op1, op2)
+        //         | AsmInstruction::Cmp(op1, op2) => {
+        //             self.pseudo_to_stack(op1, &mut curr_offset, &mut tmp_to_offset);
+        //             self.pseudo_to_stack(op2, &mut curr_offset, &mut tmp_to_offset);
+        //         }
+        //         AsmInstruction::Unary(_, op)
+        //         | AsmInstruction::Idiv(op)
+        //         | AsmInstruction::SetCC(_, op) => {
+        //             self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
+        //         }
+        //         _ => (),
+        //     }
+        // }
+        // curr_offset
     }
 
     fn pseudo_to_stack(
@@ -78,7 +80,11 @@ impl AssemblyGenerator {
 
     pub fn translate_program(&self, ir_program: IRProgram) -> AsmProgram {
         AsmProgram {
-            function: self.translate_function(ir_program.function),
+            functions: ir_program
+                .functions
+                .into_iter()
+                .map(|f| self.translate_function(f))
+                .collect(), // function: self.translate_function(ir_program.function),
         }
     }
 
@@ -97,23 +103,24 @@ impl AssemblyGenerator {
     }
 
     pub fn generate_asm(&self, program: AsmProgram) -> String {
-        let mut lines: Vec<String> = vec![
-            format!("\t.globl {}", program.function.name),
-            format!("{}:", program.function.name),
-            "pushq %rbp".to_string(),
-            "movq %rsp, %rbp".to_string(),
-        ];
+        todo!()
+        // let mut lines: Vec<String> = vec![
+        //     format!("\t.globl {}", program.function.name),
+        //     format!("{}:", program.function.name),
+        //     "pushq %rbp".to_string(),
+        //     "movq %rsp, %rbp".to_string(),
+        // ];
 
-        lines.append(
-            &mut program
-                .function
-                .instructions
-                .into_iter()
-                .map(|instr| instr.to_string())
-                .collect::<Vec<String>>(),
-        );
-        lines.push("\t.section .note.GNU-stack\n".to_string());
+        // lines.append(
+        //     &mut program
+        //         .function
+        //         .instructions
+        //         .into_iter()
+        //         .map(|instr| instr.to_string())
+        //         .collect::<Vec<String>>(),
+        // );
+        // lines.push("\t.section .note.GNU-stack\n".to_string());
 
-        lines.join("\n")
+        // lines.join("\n")
     }
 }

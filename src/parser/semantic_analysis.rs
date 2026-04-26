@@ -1,8 +1,9 @@
-use crate::common::{TempId, VarName};
+use crate::common::TempId;
 use crate::ir::ir_ast::{Label, LabelKind};
 use crate::parser::c_ast::*;
 
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone)]
 struct VarMapEntry {
@@ -10,9 +11,27 @@ struct VarMapEntry {
     is_from_current_block: bool,
 }
 
-fn copy_variable_map(
-    variable_map: &HashMap<VarName, VarMapEntry>,
-) -> HashMap<VarName, VarMapEntry> {
+#[derive(Debug, Clone)]
+struct VarMap(HashMap<String, VarMapEntry>);
+impl VarMap {
+    fn new() -> Self {
+        VarMap(HashMap::new())
+    }
+}
+impl Deref for VarMap {
+    type Target = HashMap<String, VarMapEntry>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for VarMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+fn copy_variable_map(variable_map: &VarMap) -> VarMap {
     let mut new_var_map = variable_map.clone();
     for entry in new_var_map.values_mut() {
         entry.is_from_current_block = false;
@@ -59,11 +78,24 @@ impl SemanticAnalyzer {
 
     // TODO: label in place
     pub fn label_loops(&mut self, program: CProgram) -> Result<CProgram, String> {
+        // Ok(CProgram {
+        //     function: CFnDecl {
+        //         name: program.functions.name,
+        //         body: self.label_block(program.function.body, None)?,
+        //     },
+        // })
+
+        // TODO: remove unwrap()
         Ok(CProgram {
-            function: CFunction {
-                name: program.function.name,
-                body: self.label_block(program.function.body, None)?,
-            },
+            functions: program
+                .functions
+                .into_iter()
+                .map(|f| CFnDecl {
+                    name: f.name,
+                    params: f.params,
+                    body: self.label_block(f.body, None).unwrap(),
+                })
+                .collect(),
         })
     }
 
@@ -135,28 +167,57 @@ impl SemanticAnalyzer {
     }
 
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
-        let mut var_map = HashMap::<VarName, VarMapEntry>::new();
+        // let mut var_map = VarMap::new();
+        // Ok(CProgram {
+        //     function: CFnDecl {
+        //         name: program.function.name,
+        //         body: self.resolve_block(program.function.body, &mut var_map)?,
+        //     },
+        // })
+
+        // TODO: not sure if this is in the right place ...
+        let mut var_map = VarMap::new();
+
+        // TODO: remove unwrap()
         Ok(CProgram {
-            function: CFunction {
-                name: program.function.name,
-                body: self.resolve_block(program.function.body, &mut var_map)?,
-            },
+            functions: program
+                .functions
+                .into_iter()
+                .map(|f| self.resolve_function(f, &mut var_map).unwrap())
+                .collect(),
+        })
+    }
+
+    fn resolve_function(
+        &mut self,
+        function: CFnDecl,
+        variable_map: &mut VarMap,
+    ) -> Result<CFnDecl, String> {
+        Ok(CFnDecl {
+            name: function.name,
+            params: function.params,
+            body: self.resolve_block(function.body, variable_map)?,
         })
     }
 
     fn resolve_block(
         &mut self,
         block: CBlock,
-        variable_map: &mut HashMap<VarName, VarMapEntry>,
+        variable_map: &mut VarMap,
     ) -> Result<CBlock, String> {
         Ok(CBlock(
             block
                 .0
                 .into_iter()
                 .map(|block| match block {
-                    CBlockItem::Declaration(dec) => CBlockItem::Declaration(
-                        self.resolve_declaration(dec, variable_map).unwrap(),
-                    ),
+                    CBlockItem::Declaration(dec) => CBlockItem::Declaration(match dec {
+                        CDeclaration::VarDecl(vdec) => CDeclaration::VarDecl(
+                            self.resolve_var_declaration(vdec, variable_map).unwrap(),
+                        ),
+                        CDeclaration::FnDecl(fdec) => CDeclaration::FnDecl(
+                            self.resolve_function(fdec, &mut VarMap::new()).unwrap(),
+                        ),
+                    }),
                     CBlockItem::Statement(stmnt) => {
                         CBlockItem::Statement(self.resolve_statement(stmnt, variable_map).unwrap())
                     }
@@ -165,12 +226,12 @@ impl SemanticAnalyzer {
         ))
     }
 
-    fn resolve_declaration(
+    fn resolve_var_declaration(
         &mut self,
-        declaration: CDeclaration,
-        variable_map: &mut HashMap<VarName, VarMapEntry>,
-    ) -> Result<CDeclaration, String> {
-        let (var, mut exp) = (declaration.var, declaration.init);
+        var_decl: CVarDecl,
+        variable_map: &mut VarMap,
+    ) -> Result<CVarDecl, String> {
+        let (var, mut exp) = (var_decl.var, var_decl.init);
         if let Some(entry) = variable_map.get(&var.name)
             && entry.is_from_current_block
         {
@@ -191,7 +252,7 @@ impl SemanticAnalyzer {
             name: var.name,
             id: Some(id),
         };
-        Ok(CDeclaration {
+        Ok(CVarDecl {
             var: unique_var,
             init: exp,
         })
@@ -201,7 +262,7 @@ impl SemanticAnalyzer {
     fn resolve_expression(
         &mut self,
         expression: CExpression,
-        variable_map: &mut HashMap<VarName, VarMapEntry>,
+        variable_map: &mut VarMap,
     ) -> Result<CExpression, String> {
         match expression {
             CExpression::Assign(left, right) => match *left {
@@ -231,13 +292,16 @@ impl SemanticAnalyzer {
                     Box::new(exp2),
                 ))
             }
+            CExpression::FunctionCall(name, body) => {
+                todo!()
+            }
         }
     }
 
     fn resolve_optional_expression(
         &mut self,
         expression: Option<CExpression>,
-        variable_map: &mut HashMap<VarName, VarMapEntry>,
+        variable_map: &mut VarMap,
     ) -> Result<Option<CExpression>, String> {
         Ok(match expression {
             Some(e) => Some(self.resolve_expression(e, variable_map)?),
@@ -248,7 +312,7 @@ impl SemanticAnalyzer {
     fn resolve_factor(
         &mut self,
         factor: CFactor,
-        variable_map: &mut HashMap<VarName, VarMapEntry>,
+        variable_map: &mut VarMap,
     ) -> Result<CFactor, String> {
         match factor {
             CFactor::Var(ref var) => match variable_map.get(&var.name) {
@@ -272,7 +336,7 @@ impl SemanticAnalyzer {
     fn resolve_statement(
         &mut self,
         statement: CStatement,
-        variable_map: &mut HashMap<VarName, VarMapEntry>,
+        variable_map: &mut VarMap,
     ) -> Result<CStatement, String> {
         match statement {
             CStatement::Return(exp) => Ok(CStatement::Return(
@@ -316,7 +380,7 @@ impl SemanticAnalyzer {
                 let mut new_var_map = copy_variable_map(variable_map);
                 let init = match init {
                     CForInit::InitDecl(dec) => {
-                        CForInit::InitDecl(self.resolve_declaration(dec, &mut new_var_map)?)
+                        CForInit::InitDecl(self.resolve_var_declaration(dec, &mut new_var_map)?)
                     }
                     CForInit::InitExp(exp) => {
                         CForInit::InitExp(self.resolve_optional_expression(exp, &mut new_var_map)?)

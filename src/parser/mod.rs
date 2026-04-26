@@ -1,4 +1,4 @@
-use crate::common::{BinaryOp, Keyword, Operator, VarName};
+use crate::common::{BinaryOp, Keyword, Operator};
 use crate::lexer::Token;
 
 pub mod c_ast;
@@ -16,14 +16,15 @@ impl Parser {
     }
 
     pub fn parse_program(&mut self) -> Result<CProgram, String> {
-        let program = CProgram {
-            function: self.parse_function()?,
-        };
+        let mut functions = Vec::<CFnDecl>::new();
+        while let Some(Token::Keyword(Keyword::Int)) = self.peek() {
+            functions.push(self.parse_function()?);
+        }
 
         if self.pos < self.tokens.len() {
             Err("leftover tokens after program".to_string())
         } else {
-            Ok(program)
+            Ok(CProgram { functions })
         }
     }
 
@@ -53,20 +54,26 @@ impl Parser {
         }
     }
 
-    fn parse_function(&mut self) -> Result<CFunction, String> {
+    fn parse_function(&mut self) -> Result<CFnDecl, String> {
         self.expect(Token::Keyword(Keyword::Int))?;
 
         let name = self.parse_identifier()?;
 
         self.expect(Token::OpenParenthesis)?;
-        self.expect(Token::Keyword(Keyword::Void))?;
+        // self.expect(Token::Keyword(Keyword::Void))?;
+        let params = self.parse_params()?;
         self.expect(Token::CloseParenthesis)?;
         self.expect(Token::OpenBrace)?;
 
-        Ok(CFunction {
+        Ok(CFnDecl {
             name,
+            params,
             body: self.parse_block()?,
         })
+    }
+
+    fn parse_params(&mut self) -> Result<Vec<CParam>, String> {
+        todo!()
     }
 
     fn parse_block(&mut self) -> Result<CBlock, String> {
@@ -85,13 +92,15 @@ impl Parser {
     fn parse_block_item(&mut self) -> Result<CBlockItem, String> {
         if self.peek() == Some(&Token::Keyword(Keyword::Int)) {
             self.advance(); // only int for now, so can skip
-            Ok(CBlockItem::Declaration(self.parse_declaration()?))
+            Ok(CBlockItem::Declaration(CDeclaration::VarDecl(
+                self.parse_var_declaration()?,
+            )))
         } else {
             Ok(CBlockItem::Statement(self.parse_statement()?))
         }
     }
 
-    fn parse_declaration(&mut self) -> Result<CDeclaration, String> {
+    fn parse_var_declaration(&mut self) -> Result<CVarDecl, String> {
         if let Ok(CFactor::Var(var)) = self.parse_factor() {
             let exp = match self.peek() {
                 Some(Token::Operator(Operator::Assign)) => {
@@ -101,7 +110,7 @@ impl Parser {
                 _ => None,
             };
             self.expect(Token::Semicolon)?;
-            Ok(CDeclaration { var, init: exp })
+            Ok(CVarDecl { var, init: exp })
         } else {
             Err("Invalid variable name".to_string())
         }
@@ -166,7 +175,7 @@ impl Parser {
                 let init = {
                     if self.peek() == Some(&Token::Keyword(Keyword::Int)) {
                         self.advance(); // only int for now, so can skip
-                        CForInit::InitDecl(self.parse_declaration()?)
+                        CForInit::InitDecl(self.parse_var_declaration()?)
                     } else {
                         CForInit::InitExp(self.parse_optional_expression(Token::Semicolon)?)
                     }
@@ -266,7 +275,7 @@ impl Parser {
                 Ok(CFactor::Expression(inner_exp))
             }
             Some(Token::Identifier(name)) => Ok(CFactor::Var(CVar {
-                name: VarName::from(name.clone()),
+                name: name.clone(),
                 id: None,
             })),
             other => Err(format!("Expected expression, found {:?}", other)),
