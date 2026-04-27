@@ -1,7 +1,7 @@
 use std::fmt::{self, Formatter};
 // use std::ops::Deref;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Keyword {
     Int,
     Void,

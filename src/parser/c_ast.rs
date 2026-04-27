@@ -26,10 +26,11 @@ impl fmt::Display for CFnDecl {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct CParam {
     pub keyword: Keyword,
     pub name: Option<String>, // only None for void
+    pub id: Option<TempId>,
 }
 
 #[derive(Debug, PartialEq)]

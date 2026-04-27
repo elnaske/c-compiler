@@ -115,7 +115,7 @@ fn compile(
 
             let mut type_checker = TypeChecker::new();
             type_checker.type_check(&c_program)?;
-            eprintln!("{:#?}", type_checker.symbols);
+            // eprintln!("{:#?}", type_checker.symbols);
 
             if cfg.print_ast {
                 println!("{}", c_program);
@@ -125,7 +125,7 @@ fn compile(
                 let ir_program = IRGenerator::new(next_var_id, next_label_id).c_to_ir(c_program);
 
                 if cfg.last_stage >= CompilerStage::CodeGen {
-                    let codegen = AssemblyGenerator::new();
+                    let mut codegen = AssemblyGenerator::new();
                     let asm_program = codegen.ir_to_asm(ir_program);
                     let asm = codegen.generate_asm(asm_program);
 

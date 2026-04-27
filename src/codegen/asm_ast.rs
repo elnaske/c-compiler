@@ -26,6 +26,9 @@ pub enum AsmInstruction {
     SetCC(AsmCondCode, AsmOperand),
     Label(Label),
     AllocateStack(usize),
+    DellocateStack(usize),
+    Push(AsmOperand),
+    Call(String),
     Ret,
 }
 impl AsmInstruction {
@@ -106,6 +109,16 @@ impl fmt::Display for AsmInstruction {
             },
             Self::Label(label) => write!(f, ".L_{}:", label),
             Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
+            Self::DellocateStack(n_bytes) => write!(f, "addq ${}, %rsp", n_bytes),
+            Self::Push(op) => match op {
+                AsmOperand::Register(reg) => write!(f, "pushq %{}", reg.as_8_bytes()),
+                _ => write!(f, "pushq {}", op),
+            },
+            Self::Call(fn_name) => {
+                let mut fn_name = fn_name.clone();
+                let _ = fn_name.split_off(fn_name.len() - 2);
+                write!(f, "call {}", fn_name)
+            } // external libraries (@PLT) handled in mod.rs
             Self::Ret => write!(f, "movq %rbp, %rsp\npopq %rbp\nret"),
         }
     }
@@ -116,7 +129,7 @@ pub enum AsmOperand {
     Imm(i32),
     Register(AsmRegister),
     PseudoReg(TempId),
-    Stack(usize),
+    Stack(i32),
 }
 impl fmt::Display for AsmOperand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -124,7 +137,7 @@ impl fmt::Display for AsmOperand {
             Self::Imm(i) => write!(f, "${}", i),
             Self::Register(reg) => write!(f, "%{}", reg),
             Self::PseudoReg(_tmp) => unimplemented!(),
-            Self::Stack(offset) => write!(f, "-{}(%rbp)", offset),
+            Self::Stack(offset) => write!(f, "{}(%rbp)", offset),
         }
     }
 }
@@ -159,10 +172,15 @@ impl fmt::Display for AsmBinaryOp {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum AsmRegister {
     Eax,
+    Ecx,
     Edx,
+    Edi,
+    Esi,
+    R8d,
+    R9d,
     R10d,
     R11d,
 }
@@ -170,9 +188,28 @@ impl AsmRegister {
     fn as_1_byte(&self) -> String {
         match self {
             Self::Eax => "al",
+            Self::Ecx => "cl",
             Self::Edx => "dl",
+            Self::Edi => "dil",
+            Self::Esi => "sil",
+            Self::R8d => "r8b",
+            Self::R9d => "r9b",
             Self::R10d => "r10b",
             Self::R11d => "r11b",
+        }
+        .to_string()
+    }
+    fn as_8_bytes(&self) -> String {
+        match self {
+            Self::Eax => "rax",
+            Self::Ecx => "rcx",
+            Self::Edx => "rdx",
+            Self::Edi => "rdi",
+            Self::Esi => "rsi",
+            Self::R8d => "r8",
+            Self::R9d => "r9",
+            Self::R10d => "r10",
+            Self::R11d => "r11",
         }
         .to_string()
     }
@@ -181,7 +218,12 @@ impl fmt::Display for AsmRegister {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Eax => write!(f, "eax"),
+            Self::Ecx => write!(f, "ecx"),
             Self::Edx => write!(f, "edx"),
+            Self::Edi => write!(f, "edi"),
+            Self::Esi => write!(f, "esi"),
+            Self::R8d => write!(f, "r8d"),
+            Self::R9d => write!(f, "r9d"),
             Self::R10d => write!(f, "r10d"),
             Self::R11d => write!(f, "r11d"),
         }

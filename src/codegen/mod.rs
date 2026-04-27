@@ -5,7 +5,13 @@ use std::vec;
 pub mod asm_ast;
 use asm_ast::*;
 
-pub struct AssemblyGenerator {}
+fn round_to_16(n: usize) -> usize {
+    (n + 15) & !15
+}
+
+pub struct AssemblyGenerator {
+    fn_stack_sizes: HashMap<String, i32>,
+}
 impl Default for AssemblyGenerator {
     fn default() -> Self {
         Self::new()
@@ -13,53 +19,67 @@ impl Default for AssemblyGenerator {
 }
 impl AssemblyGenerator {
     pub fn new() -> Self {
-        AssemblyGenerator {}
+        AssemblyGenerator {
+            fn_stack_sizes: HashMap::<String, i32>::new(),
+        }
     }
 
-    pub fn ir_to_asm(&self, ir_program: IRProgram) -> AsmProgram {
-        todo!();
-        // let mut asm_program = self.translate_program(ir_program);
-        // let stack_size = self.replace_pseudo_registers(&mut asm_program);
-        // asm_program.function.instructions =
-        //     self.fix_instructions(asm_program.function.instructions, stack_size);
-        // asm_program
+    pub fn ir_to_asm(&mut self, ir_program: IRProgram) -> AsmProgram {
+        let mut asm_program = self.translate_program(ir_program);
+        self.replace_pseudo_registers(&mut asm_program);
+        asm_program.functions = asm_program
+            .functions
+            .into_iter()
+            //.filter(|f| f.instructions.len() > 0) // TODO: discard fn declarations earlier
+            .map(|f| AsmFunction {
+                name: f.name.clone(),
+                instructions: self.fix_instructions(
+                    f.instructions,
+                    self.fn_stack_sizes.get(&f.name).unwrap().abs() as usize,
+                ),
+            })
+            .collect();
+        asm_program
     }
 
-    fn replace_pseudo_registers(&self, asm_program: &mut AsmProgram) -> usize {
-        todo!();
-        // let mut tmp_to_offset = HashMap::<TempId, usize>::new();
-        // let mut curr_offset: usize = 0;
+    fn replace_pseudo_registers(&mut self, asm_program: &mut AsmProgram) {
+        let mut tmp_to_offset = HashMap::<TempId, i32>::new();
+        let mut curr_offset = 0;
 
-        // for instruction in &mut asm_program.function.instructions {
-        //     match instruction {
-        //         AsmInstruction::Mov(op1, op2)
-        //         | AsmInstruction::Binary(_, op1, op2)
-        //         | AsmInstruction::Cmp(op1, op2) => {
-        //             self.pseudo_to_stack(op1, &mut curr_offset, &mut tmp_to_offset);
-        //             self.pseudo_to_stack(op2, &mut curr_offset, &mut tmp_to_offset);
-        //         }
-        //         AsmInstruction::Unary(_, op)
-        //         | AsmInstruction::Idiv(op)
-        //         | AsmInstruction::SetCC(_, op) => {
-        //             self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
-        //         }
-        //         _ => (),
-        //     }
-        // }
-        // curr_offset
+        for function in &mut asm_program.functions {
+            for instruction in &mut function.instructions {
+                match instruction {
+                    AsmInstruction::Mov(op1, op2)
+                    | AsmInstruction::Binary(_, op1, op2)
+                    | AsmInstruction::Cmp(op1, op2) => {
+                        self.pseudo_to_stack(op1, &mut curr_offset, &mut tmp_to_offset);
+                        self.pseudo_to_stack(op2, &mut curr_offset, &mut tmp_to_offset);
+                    }
+                    AsmInstruction::Unary(_, op)
+                    | AsmInstruction::Idiv(op)
+                    | AsmInstruction::SetCC(_, op)
+                    | AsmInstruction::Push(op) => {
+                        self.pseudo_to_stack(op, &mut curr_offset, &mut tmp_to_offset);
+                    }
+                    _ => (),
+                }
+            }
+            self.fn_stack_sizes
+                .insert(function.name.clone(), curr_offset);
+        }
     }
 
     fn pseudo_to_stack(
         &self,
         operand: &mut AsmOperand,
-        curr_offset: &mut usize,
-        tmp_to_offset: &mut HashMap<TempId, usize>,
+        curr_offset: &mut i32,
+        tmp_to_offset: &mut HashMap<TempId, i32>,
     ) {
         if let AsmOperand::PseudoReg(tmp) = operand {
             let stack_offset = match tmp_to_offset.get(tmp) {
                 Some(offset) => *offset,
                 None => {
-                    *curr_offset += 4;
+                    *curr_offset -= 4;
                     tmp_to_offset.insert(*tmp, *curr_offset);
                     *curr_offset
                 }
@@ -73,12 +93,17 @@ impl AssemblyGenerator {
         asm_instructions: Vec<AsmInstruction>,
         stack_size: usize,
     ) -> Vec<AsmInstruction> {
-        std::iter::once(AsmInstruction::AllocateStack(stack_size))
-            .chain(asm_instructions.into_iter().flat_map(|ins| ins.fix()))
-            .collect()
+        if asm_instructions.len() > 0 {
+            std::iter::once(AsmInstruction::AllocateStack(round_to_16(stack_size)))
+                .chain(asm_instructions.into_iter().flat_map(|ins| ins.fix()))
+                .collect()
+        } else {
+            asm_instructions
+        }
     }
 
     pub fn translate_program(&self, ir_program: IRProgram) -> AsmProgram {
+        // eprintln!("{:#?}", ir_program.functions.len());
         AsmProgram {
             functions: ir_program
                 .functions
@@ -89,9 +114,65 @@ impl AssemblyGenerator {
     }
 
     fn translate_function(&self, ir_function: IRFunction) -> AsmFunction {
+        let mut instructions = Vec::<AsmInstruction>::new();
+        // eprintln!("{:#?}", self.fn_stack_sizes);
+
+        // TODO: solve this better
+        let get_id = |i: usize| {
+            ir_function
+                .param_ids
+                .get(i)
+                .unwrap_or(&TempId(10000 + i as u32))
+                .0
+        };
+
+        if ir_function.instructions.len() > 1 {
+            // copy params from registers
+            instructions = vec![
+                // TODO: replace ids
+                AsmInstruction::Mov(
+                    AsmOperand::Register(AsmRegister::Edi),
+                    AsmOperand::PseudoReg(TempId(get_id(0))),
+                ),
+                AsmInstruction::Mov(
+                    AsmOperand::Register(AsmRegister::Esi),
+                    AsmOperand::PseudoReg(TempId(get_id(1))),
+                ),
+                AsmInstruction::Mov(
+                    AsmOperand::Register(AsmRegister::Edx),
+                    AsmOperand::PseudoReg(TempId(get_id(2))),
+                ),
+                AsmInstruction::Mov(
+                    AsmOperand::Register(AsmRegister::Ecx),
+                    AsmOperand::PseudoReg(TempId(get_id(3))),
+                ),
+                AsmInstruction::Mov(
+                    AsmOperand::Register(AsmRegister::R8d),
+                    AsmOperand::PseudoReg(TempId(get_id(4))),
+                ),
+                AsmInstruction::Mov(
+                    AsmOperand::Register(AsmRegister::R9d),
+                    AsmOperand::PseudoReg(TempId(get_id(5))),
+                ),
+            ];
+            // copy params from stack
+            let n_params = ir_function.params.len();
+            if n_params > 6 {
+                for i in 6..n_params {
+                    let offset = 16 + (i - 6) * 8; // TODO: this should be signed i think
+                    instructions.push(AsmInstruction::Mov(
+                        AsmOperand::Stack(offset as i32),
+                        AsmOperand::PseudoReg(TempId(get_id(i))),
+                    ));
+                }
+            }
+
+            instructions.append(&mut self.translate_instructions(ir_function.instructions));
+        }
+
         AsmFunction {
             name: ir_function.name,
-            instructions: self.translate_instructions(ir_function.instructions),
+            instructions,
         }
     }
 
@@ -103,24 +184,38 @@ impl AssemblyGenerator {
     }
 
     pub fn generate_asm(&self, program: AsmProgram) -> String {
-        todo!()
-        // let mut lines: Vec<String> = vec![
-        //     format!("\t.globl {}", program.function.name),
-        //     format!("{}:", program.function.name),
-        //     "pushq %rbp".to_string(),
-        //     "movq %rsp, %rbp".to_string(),
-        // ];
+        let mut lines = Vec::<String>::new();
 
-        // lines.append(
-        //     &mut program
-        //         .function
-        //         .instructions
-        //         .into_iter()
-        //         .map(|instr| instr.to_string())
-        //         .collect::<Vec<String>>(),
-        // );
-        // lines.push("\t.section .note.GNU-stack\n".to_string());
+        for function in program.functions {
+            // eprintln!("{:?}", function.instructions);
+            if function.instructions.len() > 0 {
+                let mut fn_setup: Vec<String> = vec![
+                    format!("\t.globl {}", function.name),
+                    format!("{}:", function.name),
+                    "\tpushq %rbp".to_string(),
+                    "\tmovq %rsp, %rbp".to_string(),
+                ];
+                lines.append(&mut fn_setup);
+                lines.append(
+                    &mut function
+                        .instructions
+                        .into_iter()
+                        .map(|instr| match instr {
+                            AsmInstruction::Call(fn_name)
+                                if self.fn_stack_sizes.contains_key(&fn_name) =>
+                            {
+                                let mut fn_name = fn_name.clone();
+                                let _ = fn_name.split_off(fn_name.len() - 2);
+                                format!("\tcall {}@PLT", fn_name)
+                            }
+                            _ => format!("\t{}", instr),
+                        })
+                        .collect::<Vec<String>>(),
+                )
+            };
+        }
+        lines.push("\t.section .note.GNU-stack\n".to_string());
 
-        // lines.join("\n")
+        lines.join("\n")
     }
 }

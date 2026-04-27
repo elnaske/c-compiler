@@ -52,6 +52,7 @@ impl IRGenerator {
             functions: c_program
                 .functions
                 .into_iter()
+                .filter(|f| f.body.is_some()) // discard declarations w/o definitions
                 .map(|f| self.translate_function(f))
                 .collect(), // function: self.translate_function(c_program.function),
         }
@@ -60,22 +61,40 @@ impl IRGenerator {
     fn translate_function(&mut self, c_function: CFnDecl) -> IRFunction {
         IRFunction {
             name: c_function.name,
-            instructions: c_function
-                .body
-                .unwrap_or(CBlock(vec![]))
-                .0
+            params: c_function
+                .params
+                .clone()
                 .into_iter()
-                .flat_map(|b| self.translate_block_item(b))
-                .chain(std::iter::once(IRInstruction::Return(IRVal::Constant(0)))) // append return 0 to the end to avoid undefined behavior
+                .map(|p| p.name.expect("All non-Void parameters should have names"))
                 .collect(),
+            param_ids: c_function
+                .params
+                .into_iter()
+                .map(|p| p.id.expect("Unresolved id"))
+                .collect(),
+            instructions: self.translate_function_body(c_function.body.unwrap_or(CBlock(vec![]))),
         }
+    }
+
+    fn translate_function_body(&mut self, c_block: CBlock) -> Vec<IRInstruction> {
+        c_block
+            .0
+            .into_iter()
+            .flat_map(|b| self.translate_block_item(b))
+            .chain(std::iter::once(IRInstruction::Return(IRVal::Constant(0)))) // append return 0 to the end to avoid undefined behavior
+            .collect()
     }
 
     fn translate_block_item(&mut self, c_block_item: CBlockItem) -> Vec<IRInstruction> {
         match c_block_item {
             CBlockItem::Declaration(dec) => match dec {
                 CDeclaration::VarDecl(vdec) => self.var_declaration_to_instructions(vdec),
-                CDeclaration::FnDecl(fdec) => todo!(),
+                CDeclaration::FnDecl(fdec) => match fdec.body {
+                    Some(block) => {
+                        self.translate_function_body(block) // the type checker should prevent this, but I'm leaving it in regardless
+                    }
+                    None => vec![],
+                },
             },
 
             CBlockItem::Statement(stmnt) => self.statement_to_instructions(stmnt),
@@ -273,8 +292,18 @@ impl IRGenerator {
             }
             CFactor::Expression(exp) => self.exp_to_instructions(exp),
             CFactor::Var(var) => (IRVal::Var(var.id.unwrap()), vec![]),
-            CFactor::FunctionCall(name, body) => {
-                todo!()
+            CFactor::FunctionCall(name, args) => {
+                let mut ir_args = Vec::<IRVal>::new();
+                let mut instructions = Vec::<IRInstruction>::new();
+                let dst = IRVal::Var(self.create_temp_var());
+
+                for arg in args {
+                    let (arg_val, mut arg_instructions) = self.exp_to_instructions(arg);
+                    ir_args.push(arg_val);
+                    instructions.append(&mut arg_instructions);
+                }
+                instructions.push(IRInstruction::FnCall(name, ir_args, dst));
+                (dst, instructions)
             }
         }
     }

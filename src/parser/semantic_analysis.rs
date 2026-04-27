@@ -54,7 +54,7 @@ impl Default for SemanticAnalyzer {
 impl SemanticAnalyzer {
     pub fn new() -> Self {
         SemanticAnalyzer {
-            next_var_id: 1,
+            next_var_id: 1, // id 0 is for functions (kinda hacky but it works for now)
             next_label_id: 0,
         }
     }
@@ -270,6 +270,7 @@ impl SemanticAnalyzer {
             Ok(CParam {
                 keyword: param.keyword,
                 name: Some(format!("{}.{}", name, id.0)),
+                id: Some(id),
             })
         } else {
             Ok(param)

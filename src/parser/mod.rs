@@ -104,6 +104,7 @@ impl Parser {
                     params.push(CParam {
                         keyword: Keyword::Int,
                         name: Some(name.clone()),
+                        id: None,
                     });
                     if self.peek() == Some(&Token::CloseParenthesis) {
                         break;
