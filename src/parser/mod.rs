@@ -4,6 +4,7 @@ use crate::lexer::Token;
 pub mod c_ast;
 use c_ast::*;
 pub mod semantic_analysis;
+pub mod type_checker;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -87,10 +88,11 @@ impl Parser {
     fn parse_params(&mut self) -> Result<Vec<CParam>, String> {
         if self.peek() == Some(&Token::Keyword(Keyword::Void)) {
             self.advance();
-            return Ok(vec![CParam {
-                keyword: Keyword::Void,
-                name: None,
-            }]);
+            // return Ok(vec![CParam {
+            //     keyword: Keyword::Void,
+            //     name: None,
+            // }]);
+            return Ok(vec![]);
         }
 
         let mut params = Vec::<CParam>::new();

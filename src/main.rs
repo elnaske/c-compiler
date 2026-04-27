@@ -9,6 +9,7 @@ use lexer::Lexer;
 pub mod parser;
 use parser::Parser;
 use parser::semantic_analysis::SemanticAnalyzer;
+use parser::type_checker::TypeChecker;
 pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
@@ -105,12 +106,16 @@ fn compile(
         let mut c_program = parser.parse_program()?;
 
         if cfg.last_stage >= CompilerStage::VariableResolution {
-            // c_program = parser.resolve_variables(c_program)?;
             let mut semantic_analyzer = SemanticAnalyzer::new();
             c_program = semantic_analyzer.resolve_variables(c_program)?;
             c_program = semantic_analyzer.label_loops(c_program)?;
+
             let next_var_id = semantic_analyzer.get_next_var_id();
             let next_label_id = semantic_analyzer.get_next_label_id();
+
+            let mut type_checker = TypeChecker::new();
+            type_checker.type_check(&c_program)?;
+            eprintln!("{:#?}", type_checker.symbols);
 
             if cfg.print_ast {
                 println!("{}", c_program);

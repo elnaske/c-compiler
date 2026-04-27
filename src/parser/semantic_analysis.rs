@@ -1,4 +1,4 @@
-use crate::common::{Keyword, TempId};
+use crate::common::TempId;
 use crate::ir::ir_ast::{Label, LabelKind};
 use crate::parser::c_ast::*;
 
@@ -54,7 +54,7 @@ impl Default for SemanticAnalyzer {
 impl SemanticAnalyzer {
     pub fn new() -> Self {
         SemanticAnalyzer {
-            next_var_id: 0,
+            next_var_id: 1,
             next_label_id: 0,
         }
     }
@@ -266,9 +266,14 @@ impl SemanticAnalyzer {
         variable_map: &mut VarMap,
     ) -> Result<CParam, String> {
         if let Some(ref name) = param.name {
-            let _ = self.resolve_var_or_param_name(name, variable_map)?;
+            let id = self.resolve_var_or_param_name(name, variable_map)?;
+            Ok(CParam {
+                keyword: param.keyword,
+                name: Some(format!("{}.{}", name, id.0)),
+            })
+        } else {
+            Ok(param)
         }
-        Ok(param)
     }
 
     fn resolve_var_declaration(
@@ -378,13 +383,14 @@ impl SemanticAnalyzer {
                 None => Err(format!("Undeclared variable `{}`", var.name)),
             },
             CFactor::FunctionCall(name, args) => match variable_map.get(&name) {
-                Some(_) => {
+                Some(entry) => {
+                    let new_name = format!("{}.{}", name, entry.id.0);
                     // TODO: remove unwrap()
                     let new_args = args
                         .into_iter()
                         .map(|arg| self.resolve_expression(arg, variable_map).unwrap())
                         .collect();
-                    Ok(CFactor::FunctionCall(name, new_args))
+                    Ok(CFactor::FunctionCall(new_name, new_args))
                 }
                 None => Err(format!("Undeclared function `{}`", name)),
             },
