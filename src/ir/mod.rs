@@ -123,7 +123,7 @@ impl IRGenerator {
                 let (_, instructions) = self.exp_to_instructions(exp);
                 instructions
             }
-            CStatement::If(cond, then, else_) => {
+            CStatement::If { cond, then, else_ } => {
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
                 let mut then_instructions = self.statement_to_instructions(*then);
                 let end_label = self.create_jump_label(LabelKind::End);
@@ -162,7 +162,11 @@ impl IRGenerator {
                     label.expect("Encountered unlabeled continue statement"),
                 )]
             }
-            CStatement::While(cond, body, start) => {
+            CStatement::While {
+                cond,
+                body,
+                label: start,
+            } => {
                 let (_, continue_label, break_label) = self.resolve_loop_labels(start);
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
 
@@ -175,7 +179,11 @@ impl IRGenerator {
 
                 instructions
             }
-            CStatement::DoWhile(body, cond, start) => {
+            CStatement::DoWhile {
+                body,
+                cond,
+                label: start,
+            } => {
                 let (start, continue_label, break_label) = self.resolve_loop_labels(start);
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
 
@@ -188,7 +196,13 @@ impl IRGenerator {
 
                 instructions
             }
-            CStatement::For(init, cond, post, body, start) => {
+            CStatement::For {
+                init,
+                cond,
+                post,
+                body,
+                label: start,
+            } => {
                 let (start, continue_label, break_label) = self.resolve_loop_labels(start);
 
                 let mut instructions = match init {
@@ -242,13 +256,13 @@ impl IRGenerator {
                     panic!("Looks like variable resolution has a bug lol");
                 }
             }
-            CExpression::Conditional(cond, exp1, exp2) => {
+            CExpression::Conditional { cond, then, else_ } => {
                 let res = IRVal::Var(self.create_temp_var());
 
                 let instructions = {
                     let (cond_val, cond_instructions) = self.exp_to_instructions(*cond);
-                    let (then_val, then_instructions) = self.exp_to_instructions(*exp1);
-                    let (else_val, else_instructions) = self.exp_to_instructions(*exp2);
+                    let (then_val, then_instructions) = self.exp_to_instructions(*then);
+                    let (else_val, else_instructions) = self.exp_to_instructions(*else_);
 
                     let else_label = self.create_jump_label(LabelKind::Else);
                     let end_label = self.create_jump_label(LabelKind::End);

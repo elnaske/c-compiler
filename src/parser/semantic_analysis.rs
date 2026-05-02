@@ -103,24 +103,48 @@ impl SemanticAnalyzer {
         match statement {
             CStatement::Break(label) => match curr_label {
                 Some(l) => {
-                    *label = Some(Label { kind: LabelKind::Break, id: l.id });
+                    *label = Some(Label {
+                        kind: LabelKind::Break,
+                        id: l.id,
+                    });
                 }
                 None => return Err("Break statement outside of loop".to_string()),
             },
             CStatement::Continue(label) => match curr_label {
                 Some(l) => {
-                    *label = Some(Label { kind: LabelKind::Continue, id: l.id });
+                    *label = Some(Label {
+                        kind: LabelKind::Continue,
+                        id: l.id,
+                    });
                 }
                 None => return Err("Continue statement outside of loop".to_string()),
             },
-            CStatement::While(_, body, label) |
-            CStatement::DoWhile( body, _, label) |
-            CStatement::For(_, _, _, body, label) => {
+            CStatement::While {
+                cond: _,
+                body,
+                label,
+            }
+            | CStatement::DoWhile {
+                body,
+                cond: _,
+                label,
+            }
+            | CStatement::For {
+                init: _,
+                cond: _,
+                post: _,
+                body,
+                label,
+            } => {
                 let new_label = Some(self.create_jump_label(LabelKind::LoopStart));
                 self.label_statement(body, new_label)?;
                 *label = new_label;
             }
-            CStatement::If(_, then, else_) => {
+            CStatement::If {
+                cond: _,
+                then,
+                else_,
+            } => {
                 self.label_statement(then, curr_label)?;
                 if let Some(stmnt) = else_ {
                     self.label_statement(stmnt, curr_label)?;
@@ -185,9 +209,7 @@ impl SemanticAnalyzer {
         for item in &mut block.0 {
             match item {
                 CBlockItem::Declaration(dec) => match dec {
-                    CDeclaration::VarDecl(vdec) => {
-                        self.resolve_var_declaration(vdec, id_map)?
-                    }
+                    CDeclaration::VarDecl(vdec) => self.resolve_var_declaration(vdec, id_map)?,
 
                     CDeclaration::FnDecl(fdec) => {
                         // nested function definitions are not allowed, but function declarations are
@@ -270,10 +292,10 @@ impl SemanticAnalyzer {
             CExpression::Factor(f) => {
                 self.resolve_factor(f, id_map)?;
             }
-            CExpression::Conditional(cond, exp1, exp2) => {
+            CExpression::Conditional { cond, then, else_ } => {
                 self.resolve_expression(cond, id_map)?;
-                self.resolve_expression(exp1, id_map)?;
-                self.resolve_expression(exp2, id_map)?;
+                self.resolve_expression(then, id_map)?;
+                self.resolve_expression(else_, id_map)?;
             }
         }
         Ok(())
@@ -345,21 +367,34 @@ impl SemanticAnalyzer {
             CStatement::Return(exp) | CStatement::Expression(exp) => {
                 self.resolve_expression(exp, id_map)?
             }
-            CStatement::If(cond, then, else_) => {
+            CStatement::If { cond, then, else_ } => {
                 self.resolve_statement(then, id_map)?;
                 if let Some(stmnt) = else_ {
                     self.resolve_statement(stmnt, id_map)?;
                 }
                 self.resolve_expression(cond, id_map)?;
             }
-            CStatement::Compound(block) => {
-                self.resolve_block(block, &mut copy_id_map(id_map))?
+            CStatement::Compound(block) => self.resolve_block(block, &mut copy_id_map(id_map))?,
+            CStatement::While {
+                cond,
+                body,
+                label: _,
             }
-            CStatement::While(cond, body, _) | CStatement::DoWhile(body, cond, _) => {
+            | CStatement::DoWhile {
+                body,
+                cond,
+                label: _,
+            } => {
                 self.resolve_expression(cond, id_map)?;
                 self.resolve_statement(body, id_map)?;
             }
-            CStatement::For(init, cond, post, body, _) => {
+            CStatement::For {
+                init,
+                cond,
+                post,
+                body,
+                label: _,
+            } => {
                 let mut new_var_map = copy_id_map(id_map);
                 match init {
                     CForInit::InitDecl(dec) => {

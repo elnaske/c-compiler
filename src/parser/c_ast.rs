@@ -68,23 +68,34 @@ pub enum CForInit {
 }
 
 #[derive(Debug, PartialEq)]
-// TODO: use structs for loops
 pub enum CStatement {
     Return(CExpression),
     Expression(CExpression),
-    If(CExpression, Box<CStatement>, Option<Box<CStatement>>), // condition, then, else
+    If {
+        cond: CExpression,
+        then: Box<CStatement>,
+        else_: Option<Box<CStatement>>,
+    },
     Compound(CBlock),
     Break(Option<Label>),
     Continue(Option<Label>),
-    While(CExpression, Box<CStatement>, Option<Label>), // condition, body, label
-    DoWhile(Box<CStatement>, CExpression, Option<Label>), // body, condition, label
-    For(
-        CForInit,
-        Option<CExpression>, // condition
-        Option<CExpression>, // final exp
-        Box<CStatement>,     // body
-        Option<Label>,
-    ),
+    While {
+        cond: CExpression,
+        body: Box<CStatement>,
+        label: Option<Label>,
+    },
+    DoWhile {
+        body: Box<CStatement>,
+        cond: CExpression,
+        label: Option<Label>,
+    },
+    For {
+        init: CForInit,
+        cond: Option<CExpression>,
+        post: Option<CExpression>,
+        body: Box<CStatement>,
+        label: Option<Label>,
+    },
     Null,
 }
 impl fmt::Display for CStatement {
@@ -96,16 +107,30 @@ impl fmt::Display for CStatement {
             Self::Expression(exp) => {
                 write!(f, "Exp({})", exp)
             }
-            Self::If(cond, then, else_) => match else_ {
+            Self::If { cond, then, else_ } => match else_ {
                 Some(stmnt) => write!(f, "If(cond={}, then={}, else={}", cond, then, stmnt),
                 None => write!(f, "If(cond={}, then={}", cond, then),
             },
             Self::Compound(block) => write!(f, "Block({:?})", block),
             Self::Break(_label) => write!(f, "Break"),
             Self::Continue(_label) => write!(f, "Continue"),
-            Self::While(cond, body, _label) => write!(f, "While(cond={}, do={})", cond, *body),
-            Self::DoWhile(body, cond, _label) => write!(f, "DoWhile(do={}, cond={})", *body, cond),
-            Self::For(init, cond, post, body, _label) => {
+            Self::While {
+                cond,
+                body,
+                label: _,
+            } => write!(f, "While(cond={}, do={})", cond, *body),
+            Self::DoWhile {
+                body,
+                cond,
+                label: _,
+            } => write!(f, "DoWhile(do={}, cond={})", *body, cond),
+            Self::For {
+                init,
+                cond,
+                post,
+                body,
+                label: _,
+            } => {
                 write!(
                     f,
                     "For(init={:?}, cond={:?}, post={:?}, do={:?})",
@@ -125,7 +150,11 @@ pub enum CExpression {
     Factor(Box<CFactor>),
     Binary(BinaryOp, Box<CExpression>, Box<CExpression>),
     Assign(Box<CExpression>, Box<CExpression>),
-    Conditional(Box<CExpression>, Box<CExpression>, Box<CExpression>), // cond, then, else
+    Conditional {
+        cond: Box<CExpression>,
+        then: Box<CExpression>,
+        else_: Box<CExpression>,
+    },
 }
 impl fmt::Display for CExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -133,8 +162,8 @@ impl fmt::Display for CExpression {
             Self::Factor(fac) => write!(f, "Factor({})", fac),
             Self::Binary(op, exp1, exp2) => write!(f, "BinaryOp({}, {}, {})", op, exp1, exp2),
             Self::Assign(exp1, exp2) => write!(f, "Assign({} = {})", exp1, exp2),
-            Self::Conditional(cond, exp1, exp2) => {
-                write!(f, "Conditional({} ? {} : {})", cond, exp1, exp2)
+            Self::Conditional { cond, then, else_ } => {
+                write!(f, "Conditional({} ? {} : {})", cond, then, else_)
             }
         }
     }

@@ -186,7 +186,11 @@ impl Parser {
                     }
                     _ => None,
                 };
-                Ok(CStatement::If(condition, statement, else_statement))
+                Ok(CStatement::If {
+                    cond: condition,
+                    then: statement,
+                    else_: else_statement,
+                })
             }
             Some(Token::Keyword(Keyword::Break)) => {
                 self.advance();
@@ -203,18 +207,26 @@ impl Parser {
                 self.expect(Token::OpenParenthesis)?;
                 let cond = self.parse_expression(0)?;
                 self.expect(Token::CloseParenthesis)?;
-                let body = self.parse_statement()?;
-                Ok(CStatement::While(cond, Box::new(body), None))
+                let body = Box::new(self.parse_statement()?);
+                Ok(CStatement::While {
+                    cond,
+                    body,
+                    label: None,
+                })
             }
             Some(Token::Keyword(Keyword::Do)) => {
                 self.advance();
-                let body = self.parse_statement()?;
+                let body = Box::new(self.parse_statement()?);
                 self.expect(Token::Keyword(Keyword::While))?;
                 self.expect(Token::OpenParenthesis)?;
                 let cond = self.parse_expression(0)?;
                 self.expect(Token::CloseParenthesis)?;
                 self.expect(Token::Semicolon)?;
-                Ok(CStatement::DoWhile(Box::new(body), cond, None))
+                Ok(CStatement::DoWhile {
+                    body,
+                    cond,
+                    label: None,
+                })
             }
             Some(Token::Keyword(Keyword::For)) => {
                 self.advance();
@@ -229,8 +241,14 @@ impl Parser {
                 };
                 let cond = self.parse_optional_expression(Token::Semicolon)?;
                 let post = self.parse_optional_expression(Token::CloseParenthesis)?;
-                let body = self.parse_statement()?;
-                Ok(CStatement::For(init, cond, post, Box::new(body), None))
+                let body = Box::new(self.parse_statement()?);
+                Ok(CStatement::For {
+                    init,
+                    cond,
+                    post,
+                    body,
+                    label: None,
+                })
             }
             Some(Token::OpenBrace) => {
                 self.advance();
@@ -276,8 +294,11 @@ impl Parser {
                         exp
                     };
                     let right = self.parse_expression(op.precedence())?;
-                    left =
-                        CExpression::Conditional(Box::new(left), Box::new(middle), Box::new(right));
+                    left = CExpression::Conditional {
+                        cond: Box::new(left),
+                        then: Box::new(middle),
+                        else_: Box::new(right),
+                    };
                 }
                 _ => {
                     let right = self.parse_expression(op.precedence() + 1)?;

@@ -129,18 +129,33 @@ impl TypeChecker {
     fn check_statement(&mut self, stmnt: &CStatement) -> Result<(), String> {
         match stmnt {
             CStatement::Return(exp) | CStatement::Expression(exp) => self.check_exp(exp)?,
-            CStatement::If(exp, s1, s2) => {
-                self.check_exp(exp)?;
-                self.check_statement(s1)?;
-                if let Some(s) = s2 {
+            CStatement::If { cond, then, else_ } => {
+                self.check_exp(cond)?;
+                self.check_statement(then)?;
+                if let Some(s) = else_ {
                     self.check_statement(s)?;
                 }
             }
-            CStatement::While(exp, s, _) | CStatement::DoWhile(s, exp, _) => {
-                self.check_exp(exp)?;
-                self.check_statement(s)?
+            CStatement::While {
+                cond,
+                body,
+                label: _,
             }
-            CStatement::For(init, exp1, exp2, _, _) => {
+            | CStatement::DoWhile {
+                body,
+                cond,
+                label: _,
+            } => {
+                self.check_exp(cond)?;
+                self.check_statement(body)?
+            }
+            CStatement::For {
+                init,
+                cond,
+                post,
+                body: _,
+                label: _,
+            } => {
                 match init {
                     CForInit::InitDecl(dec) => self.check_var_decl(dec)?,
                     CForInit::InitExp(exp) if exp.is_some() => {
@@ -149,10 +164,10 @@ impl TypeChecker {
                     _ => (),
                 }
 
-                if let Some(e) = exp1 {
+                if let Some(e) = cond {
                     self.check_exp(e)?;
                 }
-                if let Some(e) = exp2 {
+                if let Some(e) = post {
                     self.check_exp(e)?;
                 }
             }
@@ -169,10 +184,10 @@ impl TypeChecker {
                 self.check_exp(exp1)?;
                 self.check_exp(exp2)?;
             }
-            CExpression::Conditional(exp1, exp2, exp3) => {
-                self.check_exp(exp1)?;
-                self.check_exp(exp2)?;
-                self.check_exp(exp3)?;
+            CExpression::Conditional { cond, then, else_ } => {
+                self.check_exp(cond)?;
+                self.check_exp(then)?;
+                self.check_exp(else_)?;
             }
         }
         Ok(())
