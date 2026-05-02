@@ -64,10 +64,8 @@ impl Parser {
         let name = self.parse_identifier()?;
 
         self.expect(Token::OpenParenthesis)?;
-        // self.expect(Token::Keyword(Keyword::Void))?;
         let params = self.parse_params()?;
         self.expect(Token::CloseParenthesis)?;
-        // self.expect(Token::OpenBrace)?;
 
         let body = {
             match self.peek() {
@@ -311,13 +309,10 @@ impl Parser {
         match self.take_token() {
             Some(Token::Constant(i)) => Ok(CFactor::Constant(*i)),
             Some(Token::Operator(Operator::Decrement)) => unimplemented!(),
-            Some(Token::Operator(op)) if op.is_unary() => {
-                // Not a big fan of how this is handled rn
-                Ok(CFactor::Unary(
-                    op.to_unop().unwrap(),
-                    Box::new(self.parse_factor()?),
-                ))
-            }
+            Some(Token::Operator(op)) if op.is_unary() => Ok(CFactor::Unary(
+                op.to_unop().unwrap(),
+                Box::new(self.parse_factor()?),
+            )),
             Some(Token::OpenParenthesis) => {
                 let inner_exp = self.parse_expression(0)?;
                 self.expect(Token::CloseParenthesis)?;
@@ -354,12 +349,6 @@ impl Parser {
     fn parse_args(&mut self) -> Result<Vec<CExpression>, String> {
         let mut args = Vec::<CExpression>::new();
 
-        // while self.peek() != Some(&Token::CloseParenthesis) {
-        //     args.push(self.parse_expression(0)?);
-        //     if self.peek() != Some(&Token::CloseParenthesis) {
-        //         self.expect(Token::Comma)?;
-        //     }
-        // }
         loop {
             args.push(self.parse_expression(0)?);
             if self.peek() == Some(&Token::CloseParenthesis) {

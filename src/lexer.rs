@@ -230,7 +230,6 @@ impl<'a> Lexer<'a> {
             match self.peek() {
                 Some(b'0'..=b'9') => self.advance(),
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
-                    // panic!("invalid suffix on integer constant")
                     return Err(CompilerError::new(
                         ErrorKind::InvalidIntSuffix,
                         self.filename.clone(),

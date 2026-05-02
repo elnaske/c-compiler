@@ -131,10 +131,9 @@ impl IRInstruction {
                 let mut stack_args = Vec::<IRVal>::new();
                 let mut args = args.clone();
 
-                // TODO: check if the if is necessary (can range for drain() be bigger than len?)
                 if args.len() > arg_registers.len() {
                     register_args.append(&mut args.drain(..6).collect());
-                    stack_args.append(&mut args.drain(..).collect());
+                    stack_args.append(&mut std::mem::take(&mut args));
                 } else {
                     register_args = args;
                     stack_args = vec![];

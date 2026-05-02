@@ -24,6 +24,11 @@ pub struct SymbolEntry {
 pub struct TypeChecker {
     pub symbols: HashMap<String, SymbolEntry>,
 }
+impl Default for TypeChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl TypeChecker {
     pub fn new() -> Self {
         TypeChecker {
@@ -66,7 +71,6 @@ impl TypeChecker {
         }
 
         self.symbols.insert(
-            // decl.name.clone(),
             format!("{}.0", decl.name),
             SymbolEntry {
                 kind: SymbolKind::Fn {
@@ -97,7 +101,6 @@ impl TypeChecker {
 
     fn check_var_decl(&mut self, var_decl: &CVarDecl) -> Result<(), String> {
         self.symbols.insert(
-            // var_decl.var.name.clone(),
             var_decl.var.to_string(),
             SymbolEntry {
                 kind: SymbolKind::Var,
@@ -105,7 +108,7 @@ impl TypeChecker {
             },
         );
         if let Some(exp) = &var_decl.init {
-            self.check_exp(&exp)?;
+            self.check_exp(exp)?;
         }
         Ok(())
     }
@@ -141,7 +144,7 @@ impl TypeChecker {
                 match init {
                     CForInit::InitDecl(dec) => self.check_var_decl(dec)?,
                     CForInit::InitExp(exp) if exp.is_some() => {
-                        self.check_exp(&exp.as_ref().unwrap())?
+                        self.check_exp(exp.as_ref().unwrap())?
                     }
                     _ => (),
                 }

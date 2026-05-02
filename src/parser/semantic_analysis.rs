@@ -79,7 +79,6 @@ impl SemanticAnalyzer {
 
     // TODO: label in place
     pub fn label_loops(&mut self, program: CProgram) -> Result<CProgram, String> {
-        // TODO: remove unwrap()
         Ok(CProgram {
             functions: program
                 .functions
@@ -87,10 +86,7 @@ impl SemanticAnalyzer {
                 .map(|f| CFnDecl {
                     name: f.name,
                     params: f.params,
-                    body: match f.body {
-                        Some(b) => Some(self.label_block(b, None).unwrap()),
-                        None => None,
-                    },
+                    body: f.body.map(|b| self.label_block(b, None).unwrap()),
                 })
                 .collect(),
         })
@@ -164,7 +160,6 @@ impl SemanticAnalyzer {
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
         let mut var_map = IdentifierMap::new();
 
-        // TODO: remove unwrap()
         Ok(CProgram {
             functions: program
                 .functions
@@ -189,14 +184,13 @@ impl SemanticAnalyzer {
         variable_map.insert(
             function.name.clone(),
             IdentifierMapEntry {
-                id: TempId(0), // TODO: figure out better solution
+                id: TempId(0), // id 0 reserved for functions, variables start at 1
                 is_from_current_scope: true,
                 has_linkage: true,
             },
         );
 
         let mut inner_map = copy_variable_map(variable_map);
-        // TODO: remove unwrap()
         let new_params = function
             .params
             .into_iter()
@@ -375,7 +369,6 @@ impl SemanticAnalyzer {
             CFactor::FunctionCall(name, args) => match variable_map.get(&name) {
                 Some(entry) => {
                     let new_name = format!("{}.{}", name, entry.id.0);
-                    // TODO: remove unwrap()
                     let new_args = args
                         .into_iter()
                         .map(|arg| self.resolve_expression(arg, variable_map).unwrap())
@@ -421,13 +414,9 @@ impl SemanticAnalyzer {
                     else_,
                 ))
             }
-            CStatement::Compound(block) => {
-                // let mut new_var_map = self.copy_variable_map(variable_map);
-                Ok(CStatement::Compound(self.resolve_block(
-                    block,
-                    &mut copy_variable_map(variable_map),
-                )?))
-            }
+            CStatement::Compound(block) => Ok(CStatement::Compound(
+                self.resolve_block(block, &mut copy_variable_map(variable_map))?,
+            )),
             CStatement::While(cond, mut body, label) => {
                 let cond = self.resolve_expression(cond, variable_map)?;
                 *body = self.resolve_statement(*body, variable_map)?;
