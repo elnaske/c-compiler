@@ -1,7 +1,7 @@
 use std::fmt::{self, Formatter};
-use std::ops::Deref;
+// use std::ops::Deref;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Keyword {
     Int,
     Void,
@@ -33,8 +33,6 @@ impl Keyword {
     }
 }
 
-// TODO: this is too much repeated code, go back to the way it was before (or find a better way)
-// TODO: try implementing copy trait to avoid using clone() everywhere
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
     BitwiseNot,
@@ -205,22 +203,3 @@ impl fmt::Display for BinaryOp {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct TempId(pub u32);
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct VarName(pub String);
-impl Deref for VarName {
-    type Target = String;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl fmt::Display for VarName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
-    }
-}
-impl From<String> for VarName {
-    fn from(s: String) -> Self {
-        VarName(s)
-    }
-}

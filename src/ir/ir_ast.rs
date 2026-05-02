@@ -11,12 +11,14 @@ use crate::common::{BinaryOp, TempId, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub struct IRProgram {
-    pub function: IRFunction,
+    pub functions: Vec<IRFunction>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct IRFunction {
     pub name: String,
+    pub params: Vec<String>,
+    pub param_ids: Vec<TempId>,
     pub instructions: Vec<IRInstruction>,
 }
 
@@ -30,6 +32,7 @@ pub enum IRInstruction {
     JumpIfZero(IRVal, Label),
     JumpIfNotZero(IRVal, Label),
     Label(Label),
+    FnCall(String, Vec<IRVal>, IRVal), // name, args, dst
 }
 impl IRInstruction {
     pub fn to_asm(&self) -> Vec<AsmInstruction> {
@@ -113,6 +116,64 @@ impl IRInstruction {
                 ]
             }
             Self::Label(label) => vec![AsmInstruction::Label(*label)],
+            Self::FnCall(name, args, dst) => {
+                let mut instructions = Vec::<AsmInstruction>::new();
+                let arg_registers = [
+                    AsmRegister::Edi,
+                    AsmRegister::Esi,
+                    AsmRegister::Edx,
+                    AsmRegister::Ecx,
+                    AsmRegister::R8d,
+                    AsmRegister::R9d,
+                ];
+
+                let mut register_args = Vec::<IRVal>::new();
+                let mut stack_args = Vec::<IRVal>::new();
+                let mut args = args.clone();
+
+                if args.len() > arg_registers.len() {
+                    register_args.append(&mut args.drain(..6).collect());
+                    stack_args.append(&mut std::mem::take(&mut args));
+                } else {
+                    register_args = args;
+                    stack_args = vec![];
+                }
+
+                // align to 16 bytes
+                let stack_padding: usize = { if stack_args.len() % 2 == 1 { 8 } else { 0 } };
+                if stack_padding > 0 {
+                    instructions.push(AllocateStack(stack_padding))
+                }
+
+                // pass args in registers
+                for (i, arg) in register_args.iter().enumerate() {
+                    instructions.push(Mov(arg.to_asm(), Register(arg_registers[i])));
+                }
+
+                // pass args on stack in reverse order
+                for arg in stack_args.iter().rev() {
+                    let asm_arg = arg.to_asm();
+                    match asm_arg {
+                        Imm(_) | Register(_) => {
+                            instructions.push(Push(asm_arg));
+                        }
+                        PseudoReg(_) | Stack(_) => instructions
+                            .append(&mut vec![Mov(asm_arg, Register(Eax)), Push(Register(Eax))]),
+                    }
+                }
+
+                instructions.push(Call(name.clone()));
+
+                let bytes_to_remove = 8 * stack_args.len() + stack_padding;
+                if bytes_to_remove > 0 {
+                    instructions.push(DeallocateStack(bytes_to_remove))
+                }
+
+                // get return value
+                instructions.push(Mov(Register(Eax), dst.to_asm()));
+
+                instructions
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 pub mod ir_ast;
+
 use crate::common::{BinaryOp, TempId};
 use crate::parser::c_ast::*;
 use ir_ast::*;
@@ -48,40 +49,62 @@ impl IRGenerator {
 
     pub fn c_to_ir(&mut self, c_program: CProgram) -> IRProgram {
         IRProgram {
-            function: self.translate_function(c_program.function),
-        }
-    }
-
-    fn translate_function(&mut self, c_function: CFunction) -> IRFunction {
-        IRFunction {
-            name: c_function.name,
-            instructions: c_function
-                .body
-                .0
+            functions: c_program
+                .functions
                 .into_iter()
-                .flat_map(|b| self.translate_block_item(b))
-                .chain(std::iter::once(IRInstruction::Return(IRVal::Constant(0)))) // append return 0 to the end to avoid undefined behavior
+                .filter(|f| f.body.is_some()) // discard declarations w/o definitions
+                .map(|f| self.translate_function(f))
                 .collect(),
         }
     }
 
+    fn translate_function(&mut self, c_function: CFnDecl) -> IRFunction {
+        IRFunction {
+            name: c_function.name,
+            params: c_function
+                .params
+                .clone()
+                .into_iter()
+                .map(|p| p.name.expect("All non-Void parameters should have names"))
+                .collect(),
+            param_ids: c_function
+                .params
+                .into_iter()
+                .map(|p| p.id.expect("Unresolved id"))
+                .collect(),
+            instructions: self.translate_function_body(c_function.body.unwrap_or(CBlock(vec![]))),
+        }
+    }
+
+    fn translate_function_body(&mut self, c_block: CBlock) -> Vec<IRInstruction> {
+        c_block
+            .0
+            .into_iter()
+            .flat_map(|b| self.translate_block_item(b))
+            .chain(std::iter::once(IRInstruction::Return(IRVal::Constant(0)))) // append return 0 to the end to avoid undefined behavior
+            .collect()
+    }
+
     fn translate_block_item(&mut self, c_block_item: CBlockItem) -> Vec<IRInstruction> {
         match c_block_item {
-            CBlockItem::Declaration(dec) => self.declaration_to_instructions(dec),
+            CBlockItem::Declaration(dec) => match dec {
+                CDeclaration::VarDecl(vdec) => self.var_declaration_to_instructions(vdec),
+                CDeclaration::FnDecl(fdec) => match fdec.body {
+                    Some(block) => {
+                        self.translate_function_body(block) // the type checker should prevent this, but I'm leaving it in regardless
+                    }
+                    None => vec![],
+                },
+            },
             CBlockItem::Statement(stmnt) => self.statement_to_instructions(stmnt),
         }
     }
 
-    fn declaration_to_instructions(&mut self, c_declaration: CDeclaration) -> Vec<IRInstruction> {
-        match c_declaration.init {
+    fn var_declaration_to_instructions(&mut self, var_decl: CVarDecl) -> Vec<IRInstruction> {
+        match var_decl.init {
             Some(exp) => {
                 let (result, mut instructions) = self.exp_to_instructions(exp);
-                let ir_var = IRVal::Var(
-                    c_declaration
-                        .var
-                        .id
-                        .expect("Encountered unresolved variable"),
-                );
+                let ir_var = IRVal::Var(var_decl.var.id.expect("Encountered unresolved variable"));
                 instructions.push(IRInstruction::Copy(result, ir_var));
                 instructions
             }
@@ -100,7 +123,7 @@ impl IRGenerator {
                 let (_, instructions) = self.exp_to_instructions(exp);
                 instructions
             }
-            CStatement::If(cond, then, else_) => {
+            CStatement::If { cond, then, else_ } => {
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
                 let mut then_instructions = self.statement_to_instructions(*then);
                 let end_label = self.create_jump_label(LabelKind::End);
@@ -139,7 +162,11 @@ impl IRGenerator {
                     label.expect("Encountered unlabeled continue statement"),
                 )]
             }
-            CStatement::While(cond, body, start) => {
+            CStatement::While {
+                cond,
+                body,
+                label: start,
+            } => {
                 let (_, continue_label, break_label) = self.resolve_loop_labels(start);
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
 
@@ -152,7 +179,11 @@ impl IRGenerator {
 
                 instructions
             }
-            CStatement::DoWhile(body, cond, start) => {
+            CStatement::DoWhile {
+                body,
+                cond,
+                label: start,
+            } => {
                 let (start, continue_label, break_label) = self.resolve_loop_labels(start);
                 let (cond_val, mut cond_instructions) = self.exp_to_instructions(cond);
 
@@ -165,11 +196,17 @@ impl IRGenerator {
 
                 instructions
             }
-            CStatement::For(init, cond, post, body, start) => {
+            CStatement::For {
+                init,
+                cond,
+                post,
+                body,
+                label: start,
+            } => {
                 let (start, continue_label, break_label) = self.resolve_loop_labels(start);
 
                 let mut instructions = match init {
-                    CForInit::InitDecl(dec) => self.declaration_to_instructions(dec),
+                    CForInit::InitDecl(dec) => self.var_declaration_to_instructions(dec),
                     CForInit::InitExp(exp) => match exp {
                         Some(e) => {
                             let (_, instructions) = self.exp_to_instructions(e);
@@ -219,13 +256,13 @@ impl IRGenerator {
                     panic!("Looks like variable resolution has a bug lol");
                 }
             }
-            CExpression::Conditional(cond, exp1, exp2) => {
+            CExpression::Conditional { cond, then, else_ } => {
                 let res = IRVal::Var(self.create_temp_var());
 
                 let instructions = {
                     let (cond_val, cond_instructions) = self.exp_to_instructions(*cond);
-                    let (then_val, then_instructions) = self.exp_to_instructions(*exp1);
-                    let (else_val, else_instructions) = self.exp_to_instructions(*exp2);
+                    let (then_val, then_instructions) = self.exp_to_instructions(*then);
+                    let (else_val, else_instructions) = self.exp_to_instructions(*else_);
 
                     let else_label = self.create_jump_label(LabelKind::Else);
                     let end_label = self.create_jump_label(LabelKind::End);
@@ -268,6 +305,19 @@ impl IRGenerator {
             }
             CFactor::Expression(exp) => self.exp_to_instructions(exp),
             CFactor::Var(var) => (IRVal::Var(var.id.unwrap()), vec![]),
+            CFactor::FunctionCall(name, args) => {
+                let mut ir_args = Vec::<IRVal>::new();
+                let mut instructions = Vec::<IRInstruction>::new();
+                let dst = IRVal::Var(self.create_temp_var());
+
+                for arg in args {
+                    let (arg_val, mut arg_instructions) = self.exp_to_instructions(arg);
+                    ir_args.push(arg_val);
+                    instructions.append(&mut arg_instructions);
+                }
+                instructions.push(IRInstruction::FnCall(name, ir_args, dst));
+                (dst, instructions)
+            }
         }
     }
 

@@ -9,6 +9,7 @@ use lexer::Lexer;
 pub mod parser;
 use parser::Parser;
 use parser::semantic_analysis::SemanticAnalyzer;
+use parser::type_checker::TypeChecker;
 pub mod codegen;
 use codegen::AssemblyGenerator;
 pub mod errors;
@@ -23,7 +24,8 @@ enum CompilerStage {
     IR,
     CodeGen,
     EmitAsm,
-    AssembleAndLink,
+    Assemble,
+    Link,
 }
 
 struct Config {
@@ -39,7 +41,7 @@ impl Config {
         Config {
             infiles: Vec::new(),
             outfile: None,
-            last_stage: CompilerStage::AssembleAndLink,
+            last_stage: CompilerStage::Link,
             print_tokens: false,
             print_ast: false,
         }
@@ -65,6 +67,7 @@ impl Config {
                     "--tacky" => cfg.last_stage = CompilerStage::IR,
                     "--codegen" => cfg.last_stage = CompilerStage::CodeGen,
                     "-S" => cfg.last_stage = CompilerStage::EmitAsm,
+                    "-c" => cfg.last_stage = CompilerStage::Assemble,
                     "--print_tokens" => cfg.print_tokens = true,
                     "--print_ast" => cfg.print_ast = true,
                     other => return Err(format!("illegal flag `{other}`")),
@@ -91,7 +94,6 @@ fn compile(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let code = fs::read_to_string(infile).expect("Failed to read file");
 
-    // TODO: see if there is a way to avoid cloning filename
     let tokens = Lexer::new(code.as_bytes(), infile.clone()).get_tokens();
 
     if cfg.print_tokens {
@@ -103,12 +105,15 @@ fn compile(
         let mut c_program = parser.parse_program()?;
 
         if cfg.last_stage >= CompilerStage::VariableResolution {
-            // c_program = parser.resolve_variables(c_program)?;
             let mut semantic_analyzer = SemanticAnalyzer::new();
-            c_program = semantic_analyzer.resolve_variables(c_program)?;
-            c_program = semantic_analyzer.label_loops(c_program)?;
+            semantic_analyzer.resolve_variables(&mut c_program)?;
+            semantic_analyzer.label_loops(&mut c_program)?;
+
             let next_var_id = semantic_analyzer.get_next_var_id();
             let next_label_id = semantic_analyzer.get_next_label_id();
+
+            let mut type_checker = TypeChecker::new();
+            type_checker.type_check(&c_program)?;
 
             if cfg.print_ast {
                 println!("{}", c_program);
@@ -118,7 +123,7 @@ fn compile(
                 let ir_program = IRGenerator::new(next_var_id, next_label_id).c_to_ir(c_program);
 
                 if cfg.last_stage >= CompilerStage::CodeGen {
-                    let codegen = AssemblyGenerator::new();
+                    let mut codegen = AssemblyGenerator::new();
                     let asm_program = codegen.ir_to_asm(ir_program);
                     let asm = codegen.generate_asm(asm_program);
 
@@ -134,9 +139,17 @@ fn compile(
     Ok(())
 }
 
-fn assemble_and_link(assembly_file: &str, outfile: &str) {
+fn assemble_and_link(assembly_file: &str, outfile: &str, do_linking: bool) {
+    let mut args = vec![assembly_file, "-o"];
+    let obj_file = format!("{}.o", outfile);
+    if do_linking {
+        args.push(&obj_file);
+        args.push("-c");
+    } else {
+        args.push(outfile);
+    }
     Command::new("gcc")
-        .args([assembly_file, "-o", outfile])
+        .args(args)
         .output()
         .expect("assembling/linking failed");
 }
@@ -155,8 +168,9 @@ fn run(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
     compile(&cfg, &preprocessor_output, &assembly_output)?;
     fs::remove_file(preprocessor_output).expect("failed to remove preprocessed file");
 
-    if cfg.last_stage >= CompilerStage::AssembleAndLink {
-        assemble_and_link(&assembly_output, &output);
+    if cfg.last_stage >= CompilerStage::Assemble {
+        let do_linking = cfg.last_stage < CompilerStage::Link;
+        assemble_and_link(&assembly_output, &output, do_linking);
         fs::remove_file(assembly_output).expect("failed to remove assembly file");
     }
     Ok(())

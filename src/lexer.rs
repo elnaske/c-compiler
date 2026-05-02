@@ -12,6 +12,7 @@ pub enum Token {
     CloseParenthesis,
     OpenBrace,
     CloseBrace,
+    Comma,
     Semicolon,
     Colon,
     Eof,
@@ -172,6 +173,10 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Ok(Token::CloseBrace)
             }
+            Some(b',') => {
+                self.advance();
+                Ok(Token::Comma)
+            }
             Some(b';') => {
                 self.advance();
                 Ok(Token::Semicolon)
@@ -211,7 +216,6 @@ impl<'a> Lexer<'a> {
             Token::Keyword(keyword)
         } else {
             Token::Identifier(
-                // TODO: &str instead of String (+ lifetime annotation)
                 str::from_utf8(&self.input[start..self.pos])
                     .expect("Invalid UTF-8 sequence")
                     .to_string(),
@@ -226,7 +230,6 @@ impl<'a> Lexer<'a> {
             match self.peek() {
                 Some(b'0'..=b'9') => self.advance(),
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
-                    // panic!("invalid suffix on integer constant")
                     return Err(CompilerError::new(
                         ErrorKind::InvalidIntSuffix,
                         self.filename.clone(),
