@@ -216,7 +216,6 @@ impl<'a> Lexer<'a> {
             Token::Keyword(keyword)
         } else {
             Token::Identifier(
-                // TODO: &str instead of String (+ lifetime annotation)
                 str::from_utf8(&self.input[start..self.pos])
                     .expect("Invalid UTF-8 sequence")
                     .to_string(),

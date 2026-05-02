@@ -26,7 +26,7 @@ pub enum AsmInstruction {
     SetCC(AsmCondCode, AsmOperand),
     Label(Label),
     AllocateStack(usize),
-    DellocateStack(usize),
+    DeallocateStack(usize),
     Push(AsmOperand),
     Call(String),
     Ret,
@@ -104,12 +104,12 @@ impl fmt::Display for AsmInstruction {
             Self::Jmp(target) => write!(f, "jmp .L_{}", target),
             Self::JmpCC(cond, target) => write!(f, "j{} .L_{}", cond, target),
             Self::SetCC(cond, op) => match op {
-                AsmOperand::Register(reg) => write!(f, "set{} {}", cond, reg.as_1_byte()),
+                AsmOperand::Register(reg) => write!(f, "set{} %{}", cond, reg.as_1_byte()),
                 _ => write!(f, "set{} {}", cond, op),
             },
             Self::Label(label) => write!(f, ".L_{}:", label),
             Self::AllocateStack(n_bytes) => write!(f, "subq ${}, %rsp", n_bytes),
-            Self::DellocateStack(n_bytes) => write!(f, "addq ${}, %rsp", n_bytes),
+            Self::DeallocateStack(n_bytes) => write!(f, "addq ${}, %rsp", n_bytes),
             Self::Push(op) => match op {
                 AsmOperand::Register(reg) => write!(f, "pushq %{}", reg.as_8_bytes()),
                 _ => write!(f, "pushq {}", op),

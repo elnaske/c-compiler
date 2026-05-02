@@ -54,7 +54,7 @@ impl IRGenerator {
                 .into_iter()
                 .filter(|f| f.body.is_some()) // discard declarations w/o definitions
                 .map(|f| self.translate_function(f))
-                .collect(), // function: self.translate_function(c_program.function),
+                .collect(),
         }
     }
 
@@ -96,7 +96,6 @@ impl IRGenerator {
                     None => vec![],
                 },
             },
-
             CBlockItem::Statement(stmnt) => self.statement_to_instructions(stmnt),
         }
     }

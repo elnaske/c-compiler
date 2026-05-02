@@ -30,7 +30,6 @@ impl AssemblyGenerator {
         asm_program.functions = asm_program
             .functions
             .into_iter()
-            //.filter(|f| f.instructions.len() > 0) // TODO: discard fn declarations earlier
             .map(|f| AsmFunction {
                 name: f.name.clone(),
                 instructions: self.fix_instructions(
@@ -103,19 +102,17 @@ impl AssemblyGenerator {
     }
 
     pub fn translate_program(&self, ir_program: IRProgram) -> AsmProgram {
-        // eprintln!("{:#?}", ir_program.functions.len());
         AsmProgram {
             functions: ir_program
                 .functions
                 .into_iter()
                 .map(|f| self.translate_function(f))
-                .collect(), // function: self.translate_function(ir_program.function),
+                .collect(),
         }
     }
 
     fn translate_function(&self, ir_function: IRFunction) -> AsmFunction {
         let mut instructions = Vec::<AsmInstruction>::new();
-        // eprintln!("{:#?}", self.fn_stack_sizes);
 
         // TODO: solve this better
         let get_id = |i: usize| {
@@ -126,7 +123,7 @@ impl AssemblyGenerator {
                 .0
         };
 
-        if ir_function.instructions.len() > 1 {
+        if ir_function.instructions.len() > 0 {
             // copy params from registers
             instructions = vec![
                 // TODO: replace ids
@@ -159,13 +156,14 @@ impl AssemblyGenerator {
             let n_params = ir_function.params.len();
             if n_params > 6 {
                 for i in 6..n_params {
-                    let offset = 16 + (i - 6) * 8; // TODO: this should be signed i think
+                    let offset = 16 + (i - 6) * 8;
                     instructions.push(AsmInstruction::Mov(
                         AsmOperand::Stack(offset as i32),
                         AsmOperand::PseudoReg(TempId(get_id(i))),
                     ));
                 }
             }
+
 
             instructions.append(&mut self.translate_instructions(ir_function.instructions));
         }
@@ -185,10 +183,9 @@ impl AssemblyGenerator {
 
     pub fn generate_asm(&self, program: AsmProgram) -> String {
         let mut lines = Vec::<String>::new();
-
         for function in program.functions {
             // eprintln!("{:?}", function.instructions);
-            if function.instructions.len() > 0 {
+            if function.instructions.len() > 0 || function.name == "main" {
                 let mut fn_setup: Vec<String> = vec![
                     format!("\t.globl {}", function.name),
                     format!("{}:", function.name),

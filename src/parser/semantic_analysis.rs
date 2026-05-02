@@ -5,39 +5,37 @@ use crate::parser::c_ast::*;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
-// TODO: rename : VarMap -> IdentifierMap, is_from_current_block -> is_from_current_scope
-
 #[derive(Debug, Clone)]
-struct VarMapEntry {
+struct IdentifierMapEntry {
     id: TempId,
-    is_from_current_block: bool,
+    is_from_current_scope: bool,
     has_linkage: bool,
 }
 
 #[derive(Debug, Clone)]
-struct VarMap(HashMap<String, VarMapEntry>);
-impl VarMap {
+struct IdentifierMap(HashMap<String, IdentifierMapEntry>);
+impl IdentifierMap {
     fn new() -> Self {
-        VarMap(HashMap::new())
+        IdentifierMap(HashMap::new())
     }
 }
-impl Deref for VarMap {
-    type Target = HashMap<String, VarMapEntry>;
+impl Deref for IdentifierMap {
+    type Target = HashMap<String, IdentifierMapEntry>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl DerefMut for VarMap {
+impl DerefMut for IdentifierMap {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-fn copy_variable_map(variable_map: &VarMap) -> VarMap {
+fn copy_variable_map(variable_map: &IdentifierMap) -> IdentifierMap {
     let mut new_var_map = variable_map.clone();
     for entry in new_var_map.values_mut() {
-        entry.is_from_current_block = false;
+        entry.is_from_current_scope = false;
     }
     new_var_map
 }
@@ -81,13 +79,6 @@ impl SemanticAnalyzer {
 
     // TODO: label in place
     pub fn label_loops(&mut self, program: CProgram) -> Result<CProgram, String> {
-        // Ok(CProgram {
-        //     function: CFnDecl {
-        //         name: program.functions.name,
-        //         body: self.label_block(program.function.body, None)?,
-        //     },
-        // })
-
         // TODO: remove unwrap()
         Ok(CProgram {
             functions: program
@@ -127,7 +118,6 @@ impl SemanticAnalyzer {
     ) -> Result<CStatement, String> {
         match statement {
             CStatement::Break(_) => match curr_label {
-                // Some(_) => Ok(CStatement::Break(curr_label)),
                 Some(label) => Ok(CStatement::Break(Some(Label {
                     kind: LabelKind::Break,
                     id: label.id,
@@ -135,7 +125,6 @@ impl SemanticAnalyzer {
                 None => Err("Break statement outside of loop".to_string()),
             },
             CStatement::Continue(_) => match curr_label {
-                // Some(_) => Ok(CStatement::Continue(curr_label)),
                 Some(label) => Ok(CStatement::Continue(Some(Label {
                     kind: LabelKind::Continue,
                     id: label.id,
@@ -173,7 +162,7 @@ impl SemanticAnalyzer {
     }
 
     pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
-        let mut var_map = VarMap::new();
+        let mut var_map = IdentifierMap::new();
 
         // TODO: remove unwrap()
         Ok(CProgram {
@@ -188,10 +177,10 @@ impl SemanticAnalyzer {
     fn resolve_fn_declaration(
         &mut self,
         function: CFnDecl,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CFnDecl, String> {
         if let Some(entry) = variable_map.get(&function.name)
-            && entry.is_from_current_block
+            && entry.is_from_current_scope
             && !entry.has_linkage
         {
             return Err(format!("Function `{}` is declared twice.", function.name));
@@ -199,9 +188,9 @@ impl SemanticAnalyzer {
 
         variable_map.insert(
             function.name.clone(),
-            VarMapEntry {
+            IdentifierMapEntry {
                 id: TempId(0), // TODO: figure out better solution
-                is_from_current_block: true,
+                is_from_current_scope: true,
                 has_linkage: true,
             },
         );
@@ -228,7 +217,7 @@ impl SemanticAnalyzer {
     fn resolve_block(
         &mut self,
         block: CBlock,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CBlock, String> {
         Ok(CBlock(
             block
@@ -263,7 +252,7 @@ impl SemanticAnalyzer {
     fn resolve_param(
         &mut self,
         param: CParam,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CParam, String> {
         if let Some(ref name) = param.name {
             let id = self.resolve_var_or_param_name(name, variable_map)?;
@@ -280,7 +269,7 @@ impl SemanticAnalyzer {
     fn resolve_var_declaration(
         &mut self,
         var_decl: CVarDecl,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CVarDecl, String> {
         let (var, mut exp) = (var_decl.var, var_decl.init);
 
@@ -302,20 +291,20 @@ impl SemanticAnalyzer {
     fn resolve_var_or_param_name(
         &mut self,
         name: &str,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<TempId, String> {
         if let Some(entry) = variable_map.get(name)
-            && entry.is_from_current_block
+            && entry.is_from_current_scope
         {
             return Err(format!("`{}` is declared twice", name));
         }
         let id = self.create_unique_var();
         variable_map.insert(
             name.to_string(),
-            VarMapEntry {
+            IdentifierMapEntry {
                 id,
-                is_from_current_block: true,
-                has_linkage: false, // TODO: is this correct?
+                is_from_current_scope: true,
+                has_linkage: false,
             },
         );
 
@@ -326,7 +315,7 @@ impl SemanticAnalyzer {
     fn resolve_expression(
         &mut self,
         expression: CExpression,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CExpression, String> {
         match expression {
             CExpression::Assign(left, right) => match *left {
@@ -362,7 +351,7 @@ impl SemanticAnalyzer {
     fn resolve_optional_expression(
         &mut self,
         expression: Option<CExpression>,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<Option<CExpression>, String> {
         Ok(match expression {
             Some(e) => Some(self.resolve_expression(e, variable_map)?),
@@ -373,7 +362,7 @@ impl SemanticAnalyzer {
     fn resolve_factor(
         &mut self,
         factor: CFactor,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CFactor, String> {
         match factor {
             CFactor::Var(ref var) => match variable_map.get(&var.name) {
@@ -409,7 +398,7 @@ impl SemanticAnalyzer {
     fn resolve_statement(
         &mut self,
         statement: CStatement,
-        variable_map: &mut VarMap,
+        variable_map: &mut IdentifierMap,
     ) -> Result<CStatement, String> {
         match statement {
             CStatement::Return(exp) => Ok(CStatement::Return(

@@ -167,7 +167,7 @@ impl IRInstruction {
 
                 let bytes_to_remove = 8 * stack_args.len() + stack_padding;
                 if bytes_to_remove > 0 {
-                    instructions.push(DellocateStack(bytes_to_remove))
+                    instructions.push(DeallocateStack(bytes_to_remove))
                 }
 
                 // get return value
