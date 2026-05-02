@@ -107,8 +107,7 @@ fn compile(
         if cfg.last_stage >= CompilerStage::VariableResolution {
             let mut semantic_analyzer = SemanticAnalyzer::new();
             semantic_analyzer.resolve_variables(&mut c_program)?;
-
-            c_program = semantic_analyzer.label_loops(c_program)?;
+            semantic_analyzer.label_loops(&mut c_program)?;
 
             let next_var_id = semantic_analyzer.get_next_var_id();
             let next_label_id = semantic_analyzer.get_next_label_id();
