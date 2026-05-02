@@ -11,7 +11,7 @@ A minimal compiler for a subset of C written in Rust.
 - [x] If statements and conditional expressions
 - [x] Compound statements / scopes
 - [x] Loops
-- [ ] Functions
+- [x] Functions
 - [ ] ...
 
 ## Acknowledgements

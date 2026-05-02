@@ -157,23 +157,21 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn resolve_variables(&mut self, program: CProgram) -> Result<CProgram, String> {
+    pub fn resolve_variables(&mut self, program: &mut CProgram) -> Result<(), String> {
         let mut var_map = IdentifierMap::new();
 
-        Ok(CProgram {
-            functions: program
-                .functions
-                .into_iter()
-                .map(|f| self.resolve_fn_declaration(f, &mut var_map).unwrap())
-                .collect(),
-        })
+        for function in &mut program.functions {
+            self.resolve_fn_declaration(function, &mut var_map)?;
+        }
+
+        Ok(())
     }
 
     fn resolve_fn_declaration(
         &mut self,
-        function: CFnDecl,
+        function: &mut CFnDecl,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CFnDecl, String> {
+    ) -> Result<(), String> {
         if let Some(entry) = variable_map.get(&function.name)
             && entry.is_from_current_scope
             && !entry.has_linkage
@@ -191,98 +189,73 @@ impl SemanticAnalyzer {
         );
 
         let mut inner_map = copy_variable_map(variable_map);
-        let new_params = function
-            .params
-            .into_iter()
-            .map(|p| self.resolve_param(p, &mut inner_map).unwrap())
-            .collect();
-        let new_body = match function.body {
-            Some(b) => Some(self.resolve_block(b, &mut inner_map)?),
-            None => None,
-        };
+        for param in &mut function.params {
+            self.resolve_param(param, &mut inner_map)?;
+        }
 
-        Ok(CFnDecl {
-            name: function.name,
-            params: new_params,
-            body: new_body,
-        })
+        if let Some(b) = &mut function.body {
+            self.resolve_block(b, &mut inner_map)?;
+        }
+
+        Ok(())
     }
 
     fn resolve_block(
         &mut self,
-        block: CBlock,
+        block: &mut CBlock,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CBlock, String> {
-        Ok(CBlock(
-            block
-                .0
-                .into_iter()
-                .map(|block| match block {
-                    CBlockItem::Declaration(dec) => CBlockItem::Declaration(match dec {
-                        CDeclaration::VarDecl(vdec) => CDeclaration::VarDecl(
-                            self.resolve_var_declaration(vdec, variable_map).unwrap(),
-                        ),
-                        CDeclaration::FnDecl(fdec) => CDeclaration::FnDecl(
-                            // nested function definitions are not allowed, but function declarations are
-                            {
-                                match fdec.body {
-                                    None => self.resolve_fn_declaration(fdec, variable_map),
-                                    Some(_) => {
-                                        Err(format!("Nested function definition: `{}`", fdec.name))
-                                    }
-                                }
-                            }
-                            .unwrap(),
-                        ),
-                    }),
-                    CBlockItem::Statement(stmnt) => {
-                        CBlockItem::Statement(self.resolve_statement(stmnt, variable_map).unwrap())
+    ) -> Result<(), String> {
+        for item in &mut block.0 {
+            match item {
+                CBlockItem::Declaration(dec) => match dec {
+                    CDeclaration::VarDecl(vdec) => {
+                        self.resolve_var_declaration(vdec, variable_map)?
                     }
-                })
-                .collect(),
-        ))
+
+                    CDeclaration::FnDecl(fdec) => {
+                        // nested function definitions are not allowed, but function declarations are
+                        match fdec.body {
+                            None => self.resolve_fn_declaration(fdec, variable_map)?,
+                            Some(_) => {
+                                return Err(format!("Nested function definition: `{}`", fdec.name));
+                            }
+                        };
+                    }
+                },
+                CBlockItem::Statement(stmnt) => {
+                    self.resolve_statement(stmnt, variable_map)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn resolve_param(
         &mut self,
-        param: CParam,
+        param: &mut CParam,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CParam, String> {
+    ) -> Result<(), String> {
         if let Some(ref name) = param.name {
-            let id = self.resolve_var_or_param_name(name, variable_map)?;
-            Ok(CParam {
-                keyword: param.keyword,
-                name: Some(format!("{}.{}", name, id.0)),
-                id: Some(id),
-            })
-        } else {
-            Ok(param)
+            let id = self.get_var_or_param_id(name, variable_map)?;
+            param.name = Some(format!("{}.{}", name, id.0));
+            param.id = Some(id);
         }
+        Ok(())
     }
 
+    // TODO: rename variable_map to id_map
     fn resolve_var_declaration(
         &mut self,
-        var_decl: CVarDecl,
+        var_decl: &mut CVarDecl,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CVarDecl, String> {
-        let (var, mut exp) = (var_decl.var, var_decl.init);
+    ) -> Result<(), String> {
+        var_decl.var.id = Some(self.get_var_or_param_id(&var_decl.var.name, variable_map)?);
 
-        let id = self.resolve_var_or_param_name(&var.name, variable_map)?;
-
-        if let Some(e) = exp {
-            exp = Some(self.resolve_expression(e, variable_map)?);
-        }
-        let unique_var = CVar {
-            name: var.name,
-            id: Some(id),
-        };
-        Ok(CVarDecl {
-            var: unique_var,
-            init: exp,
-        })
+        self.resolve_optional_expression(&mut var_decl.init, variable_map)?;
+        Ok(())
     }
 
-    fn resolve_var_or_param_name(
+    fn get_var_or_param_id(
         &mut self,
         name: &str,
         variable_map: &mut IdentifierMap,
@@ -305,146 +278,127 @@ impl SemanticAnalyzer {
         Ok(id)
     }
 
-    // TODO: resolve in place instead of allocating new pointers and cloning (iter_mut()?)
     fn resolve_expression(
         &mut self,
-        expression: CExpression,
+        expression: &mut CExpression,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CExpression, String> {
+    ) -> Result<(), String> {
         match expression {
-            CExpression::Assign(left, right) => match *left {
-                CExpression::Factor(ref f) if matches!(**f, CFactor::Var(_)) => {
-                    let left = self.resolve_expression(*left, variable_map)?;
-                    let right = self.resolve_expression(*right, variable_map)?;
-                    Ok(CExpression::Assign(Box::new(left), Box::new(right)))
-                }
-                other => Err(format!("Invalid lvalue `{}`", other)),
-            },
-            CExpression::Binary(op, left, right) => {
-                let left = self.resolve_expression(*left, variable_map)?;
-                let right = self.resolve_expression(*right, variable_map)?;
-                Ok(CExpression::Binary(op, Box::new(left), Box::new(right)))
+            CExpression::Assign(left, right) => {
+                self.resolve_assignment(left, right, variable_map)?;
+            }
+            CExpression::Binary(_, left, right) => {
+                self.resolve_expression(left, variable_map)?;
+                self.resolve_expression(right, variable_map)?;
             }
             CExpression::Factor(f) => {
-                let f = self.resolve_factor(*f, variable_map)?;
-                Ok(CExpression::Factor(Box::new(f)))
+                self.resolve_factor(f, variable_map)?;
             }
             CExpression::Conditional(cond, exp1, exp2) => {
-                let cond = self.resolve_expression(*cond, variable_map)?;
-                let exp1 = self.resolve_expression(*exp1, variable_map)?;
-                let exp2 = self.resolve_expression(*exp2, variable_map)?;
-                Ok(CExpression::Conditional(
-                    Box::new(cond),
-                    Box::new(exp1),
-                    Box::new(exp2),
-                ))
+                self.resolve_expression(cond, variable_map)?;
+                self.resolve_expression(exp1, variable_map)?;
+                self.resolve_expression(exp2, variable_map)?;
             }
         }
+        Ok(())
+    }
+
+    fn resolve_assignment(
+        &mut self,
+        lval: &mut CExpression,
+        rval: &mut CExpression,
+        variable_map: &mut IdentifierMap,
+    ) -> Result<(), String> {
+        match lval {
+            CExpression::Factor(f) if matches!(**f, CFactor::Var(_)) => {
+                self.resolve_expression(lval, variable_map)?;
+                self.resolve_expression(rval, variable_map)?;
+            }
+            other => return Err(format!("Invalid lvalue `{}`", other)),
+        }
+        Ok(())
     }
 
     fn resolve_optional_expression(
         &mut self,
-        expression: Option<CExpression>,
+        expression: &mut Option<CExpression>,
         variable_map: &mut IdentifierMap,
-    ) -> Result<Option<CExpression>, String> {
-        Ok(match expression {
-            Some(e) => Some(self.resolve_expression(e, variable_map)?),
-            None => None,
-        })
+    ) -> Result<(), String> {
+        if let Some(e) = expression {
+            self.resolve_expression(e, variable_map)?
+        }
+        Ok(())
     }
 
     fn resolve_factor(
         &mut self,
-        factor: CFactor,
+        factor: &mut CFactor,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CFactor, String> {
+    ) -> Result<(), String> {
         match factor {
-            CFactor::Var(ref var) => match variable_map.get(&var.name) {
-                Some(entry) => Ok(CFactor::Var(CVar {
-                    name: var.name.clone(),
-                    id: Some(entry.id),
-                })),
-                None => Err(format!("Undeclared variable `{}`", var.name)),
-            },
-            CFactor::FunctionCall(name, args) => match variable_map.get(&name) {
+            CFactor::Var(var) => match variable_map.get(&var.name) {
                 Some(entry) => {
-                    let new_name = format!("{}.{}", name, entry.id.0);
-                    let new_args = args
-                        .into_iter()
-                        .map(|arg| self.resolve_expression(arg, variable_map).unwrap())
-                        .collect();
-                    Ok(CFactor::FunctionCall(new_name, new_args))
+                    var.id = Some(entry.id);
                 }
-                None => Err(format!("Undeclared function `{}`", name)),
+                None => return Err(format!("Undeclared variable `{}`", var.name)),
             },
-            CFactor::Unary(op, f2) => {
-                let f2 = self.resolve_factor(*f2, variable_map)?;
-                Ok(CFactor::Unary(op, Box::new(f2)))
+            CFactor::FunctionCall(name, args) => match variable_map.get(name) {
+                Some(entry) => {
+                    *name = format!("{}.{}", name, entry.id.0);
+                    for arg in args {
+                        self.resolve_expression(arg, variable_map)?
+                    }
+                }
+                None => return Err(format!("Undeclared function `{}`", name)),
+            },
+            CFactor::Unary(_, f2) => {
+                self.resolve_factor(f2, variable_map)?;
             }
-            CFactor::Expression(exp) => Ok(CFactor::Expression(
-                self.resolve_expression(exp, variable_map)?,
-            )),
-            CFactor::Constant(_) => Ok(factor),
+            CFactor::Expression(exp) => self.resolve_expression(exp, variable_map)?,
+            CFactor::Constant(_) => (),
         }
+        Ok(())
     }
 
     fn resolve_statement(
         &mut self,
-        statement: CStatement,
+        statement: &mut CStatement,
         variable_map: &mut IdentifierMap,
-    ) -> Result<CStatement, String> {
+    ) -> Result<(), String> {
         match statement {
-            CStatement::Return(exp) => Ok(CStatement::Return(
-                self.resolve_expression(exp, variable_map)?,
-            )),
-            CStatement::Expression(exp) => Ok(CStatement::Expression(
-                self.resolve_expression(exp, variable_map)?,
-            )),
-            CStatement::If(cond, mut then, else_) => {
-                *then = self.resolve_statement(*then, variable_map)?;
-                let else_ = match else_ {
-                    Some(else_stmnt) => {
-                        Some(Box::new(self.resolve_statement(*else_stmnt, variable_map)?))
-                    }
-                    None => None,
-                };
-                Ok(CStatement::If(
-                    self.resolve_expression(cond, variable_map)?,
-                    then,
-                    else_,
-                ))
+            CStatement::Return(exp) | CStatement::Expression(exp) => {
+                self.resolve_expression(exp, variable_map)?
             }
-            CStatement::Compound(block) => Ok(CStatement::Compound(
-                self.resolve_block(block, &mut copy_variable_map(variable_map))?,
-            )),
-            CStatement::While(cond, mut body, label) => {
-                let cond = self.resolve_expression(cond, variable_map)?;
-                *body = self.resolve_statement(*body, variable_map)?;
-                Ok(CStatement::While(cond, body, label))
+            CStatement::If(cond, then, else_) => {
+                self.resolve_statement(then, variable_map)?;
+                if let Some(stmnt) = else_ {
+                    self.resolve_statement(stmnt, variable_map)?;
+                }
+                self.resolve_expression(cond, variable_map)?;
             }
-            CStatement::DoWhile(body, cond, label) => {
-                let cond = self.resolve_expression(cond, variable_map)?;
-                let body = Box::new(self.resolve_statement(*body, variable_map)?);
-                Ok(CStatement::DoWhile(body, cond, label))
+            CStatement::Compound(block) => {
+                self.resolve_block(block, &mut copy_variable_map(variable_map))?
             }
-            CStatement::For(init, cond, post, mut body, label) => {
+            CStatement::While(cond, body, _) | CStatement::DoWhile(body, cond, _) => {
+                self.resolve_expression(cond, variable_map)?;
+                self.resolve_statement(body, variable_map)?;
+            }
+            CStatement::For(init, cond, post, body, _) => {
                 let mut new_var_map = copy_variable_map(variable_map);
-                let init = match init {
+                match init {
                     CForInit::InitDecl(dec) => {
-                        CForInit::InitDecl(self.resolve_var_declaration(dec, &mut new_var_map)?)
+                        self.resolve_var_declaration(dec, &mut new_var_map)?
                     }
                     CForInit::InitExp(exp) => {
-                        CForInit::InitExp(self.resolve_optional_expression(exp, &mut new_var_map)?)
+                        self.resolve_optional_expression(exp, &mut new_var_map)?
                     }
-                };
-                let cond = self.resolve_optional_expression(cond, &mut new_var_map)?;
-                let post = self.resolve_optional_expression(post, &mut new_var_map)?;
-                *body = self.resolve_statement(*body, &mut new_var_map)?;
-
-                Ok(CStatement::For(init, cond, post, body, label))
+                }
+                self.resolve_optional_expression(cond, &mut new_var_map)?;
+                self.resolve_optional_expression(post, &mut new_var_map)?;
+                self.resolve_statement(body, &mut new_var_map)?;
             }
-            CStatement::Break(_label) | CStatement::Continue(_label) => Ok(statement),
-            CStatement::Null => Ok(statement),
+            CStatement::Break(_) | CStatement::Continue(_) | CStatement::Null => (),
         }
+        Ok(())
     }
 }
